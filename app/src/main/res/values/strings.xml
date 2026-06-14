@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">Kararead</string>
+
+    <!-- Onboarding / settings -->
+    <string name="server_url">Server URL</string>
+    <string name="api_key">API key</string>
+    <string name="connect">Connect</string>
+    <string name="sign_out">Sign out</string>
+
+    <!-- Library -->
+    <string name="library">Library</string>
+    <string name="lists">Lists</string>
+    <string name="search">Search</string>
+    <string name="settings">Settings</string>
+
+    <!-- Reader actions -->
+    <string name="favourite">Favourite</string>
+    <string name="archive">Archive</string>
+    <string name="open_in_browser">Open in browser</string>
+    <string name="share">Share</string>
+    <string name="mark_read">Mark as read</string>
+    <string name="mark_unread">Mark as unread</string>
+</resources>

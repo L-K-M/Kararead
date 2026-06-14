@@ -1,0 +1,143 @@
+package ch.lkmc.kararead.data.prefs
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import ch.lkmc.kararead.data.model.AppThemeMode
+import ch.lkmc.kararead.data.model.ConnectionSettings
+import ch.lkmc.kararead.data.model.QueueSort
+import ch.lkmc.kararead.data.model.ReaderFont
+import ch.lkmc.kararead.data.model.ReaderPreferences
+import ch.lkmc.kararead.data.model.ReaderTheme
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+// General preferences live here; secrets (the API key) live in a separate,
+// backup-excluded store (see AndroidManifest backup rules).
+private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore("kararead_settings")
+private val Context.secretsStore: DataStore<Preferences> by preferencesDataStore("kararead_secrets")
+
+@Singleton
+class SettingsRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
+) {
+    private object Keys {
+        val SERVER_URL = stringPreferencesKey("server_url")
+        val API_KEY = stringPreferencesKey("api_key")
+        val READER_THEME = stringPreferencesKey("reader_theme")
+        val READER_FONT = stringPreferencesKey("reader_font")
+        val FONT_SCALE = floatPreferencesKey("font_scale")
+        val LINE_HEIGHT = floatPreferencesKey("line_height")
+        val MARGIN = intPreferencesKey("h_margin")
+        val JUSTIFY = booleanPreferencesKey("justify")
+        val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val APP_THEME = stringPreferencesKey("app_theme")
+        val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val QUEUE_SORT = stringPreferencesKey("queue_sort")
+        val READ_LATER_LIST_ID = stringPreferencesKey("read_later_list_id")
+        val READ_LATER_LIST_NAME = stringPreferencesKey("read_later_list_name")
+    }
+
+    val connection: Flow<ConnectionSettings> = combineStores()
+
+    private fun combineStores(): Flow<ConnectionSettings> =
+        context.settingsStore.data.map { prefs ->
+            val url = prefs[Keys.SERVER_URL] ?: ""
+            val key = context.secretsStore.data.first()[Keys.API_KEY] ?: ""
+            ConnectionSettings(url, key)
+        }
+
+    suspend fun connectionOnce(): ConnectionSettings {
+        val url = context.settingsStore.data.first()[Keys.SERVER_URL] ?: ""
+        val key = context.secretsStore.data.first()[Keys.API_KEY] ?: ""
+        return ConnectionSettings(url, key)
+    }
+
+    suspend fun saveConnection(settings: ConnectionSettings) {
+        context.settingsStore.edit { it[Keys.SERVER_URL] = settings.serverUrl }
+        context.secretsStore.edit { it[Keys.API_KEY] = settings.apiKey }
+    }
+
+    suspend fun clearConnection() {
+        context.settingsStore.edit { it.remove(Keys.SERVER_URL) }
+        context.secretsStore.edit { it.remove(Keys.API_KEY) }
+    }
+
+    val readerPreferences: Flow<ReaderPreferences> = context.settingsStore.data.map { p ->
+        ReaderPreferences(
+            theme = p[Keys.READER_THEME]?.let { runCatching { ReaderTheme.valueOf(it) }.getOrNull() }
+                ?: ReaderTheme.LIGHT,
+            font = p[Keys.READER_FONT]?.let { runCatching { ReaderFont.valueOf(it) }.getOrNull() }
+                ?: ReaderFont.SERIF,
+            fontScale = p[Keys.FONT_SCALE] ?: 1.0f,
+            lineHeight = p[Keys.LINE_HEIGHT] ?: 1.6f,
+            horizontalMargin = p[Keys.MARGIN] ?: 20,
+            justify = p[Keys.JUSTIFY] ?: false,
+            keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: false,
+        )
+    }
+
+    suspend fun updateReaderPreferences(prefs: ReaderPreferences) {
+        context.settingsStore.edit { p ->
+            p[Keys.READER_THEME] = prefs.theme.name
+            p[Keys.READER_FONT] = prefs.font.name
+            p[Keys.FONT_SCALE] = prefs.fontScale
+            p[Keys.LINE_HEIGHT] = prefs.lineHeight
+            p[Keys.MARGIN] = prefs.horizontalMargin
+            p[Keys.JUSTIFY] = prefs.justify
+            p[Keys.KEEP_SCREEN_ON] = prefs.keepScreenOn
+        }
+    }
+
+    val appThemeMode: Flow<AppThemeMode> = context.settingsStore.data.map { p ->
+        p[Keys.APP_THEME]?.let { runCatching { AppThemeMode.valueOf(it) }.getOrNull() }
+            ?: AppThemeMode.SYSTEM
+    }
+
+    suspend fun setAppThemeMode(mode: AppThemeMode) {
+        context.settingsStore.edit { it[Keys.APP_THEME] = mode.name }
+    }
+
+    val dynamicColor: Flow<Boolean> = context.settingsStore.data.map { it[Keys.DYNAMIC_COLOR] ?: true }
+
+    suspend fun setDynamicColor(enabled: Boolean) {
+        context.settingsStore.edit { it[Keys.DYNAMIC_COLOR] = enabled }
+    }
+
+    val queueSort: Flow<QueueSort> = context.settingsStore.data.map { p ->
+        p[Keys.QUEUE_SORT]?.let { runCatching { QueueSort.valueOf(it) }.getOrNull() } ?: QueueSort.NEWEST
+    }
+
+    suspend fun setQueueSort(sort: QueueSort) {
+        context.settingsStore.edit { it[Keys.QUEUE_SORT] = sort.name }
+    }
+
+    /** The list the user designates as their "read it later" home, if any. */
+    val readLaterList: Flow<Pair<String, String>?> = context.settingsStore.data.map { p ->
+        val id = p[Keys.READ_LATER_LIST_ID]
+        val name = p[Keys.READ_LATER_LIST_NAME]
+        if (id != null && name != null) id to name else null
+    }
+
+    suspend fun setReadLaterList(id: String?, name: String?) {
+        context.settingsStore.edit { p ->
+            if (id == null || name == null) {
+                p.remove(Keys.READ_LATER_LIST_ID)
+                p.remove(Keys.READ_LATER_LIST_NAME)
+            } else {
+                p[Keys.READ_LATER_LIST_ID] = id
+                p[Keys.READ_LATER_LIST_NAME] = name
+            }
+        }
+    }
+}

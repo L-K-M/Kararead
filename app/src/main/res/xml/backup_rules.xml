@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- The API key lives in encrypted DataStore; exclude it from cloud backups. -->
+    <exclude domain="file" path="datastore/kararead_secrets.preferences_pb" />
+</full-backup-content>
