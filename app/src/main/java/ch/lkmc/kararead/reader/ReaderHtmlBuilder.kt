@@ -238,6 +238,25 @@ body {
     var scrollable = doc.scrollHeight - doc.clientHeight;
     window.scrollTo(0, scrollable * fraction);
   };
+  // Page up/down by (almost) a screenful — driven by the hardware volume keys.
+  window.krPageBy = function(dir){
+    var doc = document.scrollingElement || document.documentElement;
+    var page = Math.max(40, doc.clientHeight - 64);
+    window.scrollBy({ top: page * dir, left: 0, behavior: 'smooth' });
+  };
+  // A tap in the reading column (not on a link, and not a text selection)
+  // toggles the app chrome.
+  document.addEventListener('click', function(e){
+    var n = e.target;
+    while (n && n !== document.body) {
+      var tag = n.tagName;
+      if (tag === 'A' || tag === 'BUTTON' || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      n = n.parentNode;
+    }
+    var sel = window.getSelection && window.getSelection().toString();
+    if (sel && sel.length > 0) return;
+    try { if (window.AndroidReader && AndroidReader.onTap) AndroidReader.onTap(); } catch(e){}
+  }, false);
   // Signal that the document is ready for progress restore.
   window.requestAnimationFrame(function(){
     try { if (window.AndroidReader) AndroidReader.onReady(); } catch(e){}

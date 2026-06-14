@@ -41,6 +41,7 @@ class SettingsRepository @Inject constructor(
         val MARGIN = intPreferencesKey("h_margin")
         val JUSTIFY = booleanPreferencesKey("justify")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val VOLUME_KEY_PAGING = booleanPreferencesKey("volume_key_paging")
         val APP_THEME = stringPreferencesKey("app_theme")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val QUEUE_SORT = stringPreferencesKey("queue_sort")
@@ -84,6 +85,7 @@ class SettingsRepository @Inject constructor(
             horizontalMargin = p[Keys.MARGIN] ?: 20,
             justify = p[Keys.JUSTIFY] ?: false,
             keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: false,
+            volumeKeyPaging = p[Keys.VOLUME_KEY_PAGING] ?: true,
         )
     }
 
@@ -96,6 +98,7 @@ class SettingsRepository @Inject constructor(
             p[Keys.MARGIN] = prefs.horizontalMargin
             p[Keys.JUSTIFY] = prefs.justify
             p[Keys.KEEP_SCREEN_ON] = prefs.keepScreenOn
+            p[Keys.VOLUME_KEY_PAGING] = prefs.volumeKeyPaging
         }
     }
 

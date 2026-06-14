@@ -91,6 +91,7 @@ data class ReaderPreferences(
     val horizontalMargin: Int = 20,     // dp, mapped to px in CSS
     val justify: Boolean = false,
     val keepScreenOn: Boolean = false,
+    val volumeKeyPaging: Boolean = true,
 )
 
 enum class ReaderTheme { LIGHT, SEPIA, DARK, BLACK }
