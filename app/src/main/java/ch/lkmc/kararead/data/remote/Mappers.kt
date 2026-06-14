@@ -89,6 +89,8 @@ fun ReaderArticle.toCacheEntity(now: Long): CachedArticleEntity = CachedArticleE
     createdAt = bookmark.createdAt,
     datePublished = bookmark.datePublished,
     readingTimeMinutes = bookmark.readingTimeMinutes,
+    archived = bookmark.archived,
+    favourited = bookmark.favourited,
     cachedAt = now,
 )
 
@@ -104,8 +106,8 @@ fun CachedArticleEntity.toReaderArticle(): ReaderArticle = ReaderArticle(
         imageUrl = imageUrl,
         createdAt = createdAt,
         datePublished = datePublished,
-        archived = false,
-        favourited = false,
+        archived = archived,
+        favourited = favourited,
         tags = emptyList(),
         note = null,
         summary = null,

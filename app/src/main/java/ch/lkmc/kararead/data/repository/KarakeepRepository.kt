@@ -98,6 +98,19 @@ class KarakeepRepository @Inject constructor(
     suspend fun getBookmark(id: String): Bookmark =
         api().getBookmark(id, includeContent = false).toDomain(assetResolver)
 
+    /**
+     * Best-effort live refresh of just the read/favourite flags (lightweight, no
+     * content), keeping any cached copy in sync. Returns null when unreachable so
+     * callers can keep showing the last-known state offline.
+     */
+    suspend fun refreshReadState(id: String): Pair<Boolean, Boolean>? = runCatching {
+        val bm = api().getBookmark(id, includeContent = false).toDomain(assetResolver)
+        cacheDao.get(id)?.let {
+            cacheDao.upsert(it.copy(archived = bm.archived, favourited = bm.favourited))
+        }
+        bm.archived to bm.favourited
+    }.getOrNull()
+
     // --- Mutations ---
 
     suspend fun setArchived(id: String, archived: Boolean) {
