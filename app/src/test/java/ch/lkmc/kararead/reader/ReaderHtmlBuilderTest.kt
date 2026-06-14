@@ -53,6 +53,19 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
+    fun `server-relative image survives sanitization when a base uri is given`() {
+        val html = "<p>x</p><img src=\"/api/assets/abc\" alt=\"hero\">"
+        // Without a base URI, the protocol-restricted relative src is dropped.
+        val withoutBase = ReaderHtmlBuilder.build(article(html), ReaderPreferences())
+        assertFalse(withoutBase.contains("/api/assets/abc"))
+        // With the server origin as base, it is absolutized and kept.
+        val withBase = ReaderHtmlBuilder.build(
+            article(html), ReaderPreferences(), baseUri = "https://srv.example.com",
+        )
+        assertTrue(withBase.contains("https://srv.example.com/api/assets/abc"))
+    }
+
+    @Test
     fun `variableCss reflects preferences`() {
         val prefs = ReaderPreferences(
             theme = ReaderTheme.SEPIA, font = ReaderFont.MONO,

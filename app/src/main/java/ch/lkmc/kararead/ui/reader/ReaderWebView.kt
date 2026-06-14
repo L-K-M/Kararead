@@ -38,8 +38,8 @@ fun ReaderWebView(
 ) {
     val palette = remember(prefs.theme) { ReaderHtmlBuilder.paletteFor(prefs.theme) }
     // Build the document once per article; preference changes are applied via JS.
-    val html = remember(article.bookmark.id) {
-        ReaderHtmlBuilder.build(article, prefs)
+    val html = remember(article.bookmark.id, baseUrl) {
+        ReaderHtmlBuilder.build(article, prefs, baseUri = baseUrl)
     }
 
     val bridge: ReaderBridge = remember {
