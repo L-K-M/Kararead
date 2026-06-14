@@ -12,6 +12,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import ch.lkmc.kararead.data.model.AppThemeMode
 import ch.lkmc.kararead.data.prefs.SettingsRepository
+import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.ui.navigation.KararreadNavHost
 import ch.lkmc.kararead.ui.navigation.Routes
 import ch.lkmc.kararead.ui.theme.KararreadTheme
@@ -34,7 +35,8 @@ data class RootUiState(
 
 @dagger.hilt.android.lifecycle.HiltViewModel
 class RootViewModel @Inject constructor(
-    settings: SettingsRepository,
+    private val settings: SettingsRepository,
+    private val apiProvider: ApiProvider,
 ) : ViewModel() {
 
     private val ready = MutableStateFlow(false)
@@ -55,7 +57,12 @@ class RootViewModel @Inject constructor(
         }.stateIn(viewModelScope, SharingStarted.Eagerly, RootUiState())
 
     init {
-        viewModelScope.launch { ready.value = true }
+        // Configure the API client from persisted settings BEFORE the first
+        // screen loads, so the initial data request never races startup.
+        viewModelScope.launch {
+            apiProvider.configure(settings.connectionOnce())
+            ready.value = true
+        }
     }
 }
 

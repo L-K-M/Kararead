@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +44,7 @@ fun BookmarkList(
     enableSwipe: Boolean = true,
     onArchive: ((Bookmark) -> Unit)? = null,
     onFavourite: ((Bookmark) -> Unit)? = null,
+    archiveIsRestore: Boolean = false,
     emptyTitle: String = "Nothing here yet",
     emptySubtitle: String? = null,
     emptyEmoji: String? = "✨",
@@ -83,6 +85,7 @@ fun BookmarkList(
                                 bookmark = bookmark,
                                 onArchive = onArchive,
                                 onFavourite = onFavourite,
+                                archiveIsRestore = archiveIsRestore,
                             ) {
                                 BookmarkCard(
                                     bookmark = bookmark,
@@ -133,13 +136,21 @@ private fun SwipeRow(
     bookmark: Bookmark,
     onArchive: ((Bookmark) -> Unit)?,
     onFavourite: ((Bookmark) -> Unit)?,
+    archiveIsRestore: Boolean,
     content: @Composable () -> Unit,
 ) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val state = androidx.compose.material3.rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
-                SwipeToDismissBoxValue.EndToStart -> { onArchive?.invoke(bookmark); false }
-                SwipeToDismissBoxValue.StartToEnd -> { onFavourite?.invoke(bookmark); false }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    onArchive?.invoke(bookmark); false
+                }
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    onFavourite?.invoke(bookmark); false
+                }
                 else -> false
             }
         },
@@ -148,24 +159,31 @@ private fun SwipeRow(
         state = state,
         enableDismissFromStartToEnd = onFavourite != null,
         enableDismissFromEndToStart = onArchive != null,
-        backgroundContent = { SwipeBackground(state.dismissDirection, bookmark.favourited) },
+        backgroundContent = {
+            SwipeBackground(state.dismissDirection, bookmark.favourited, archiveIsRestore)
+        },
         content = { content() },
     )
 }
 
 @Composable
-private fun SwipeBackground(direction: SwipeToDismissBoxValue, favourited: Boolean) {
+private fun SwipeBackground(
+    direction: SwipeToDismissBoxValue,
+    favourited: Boolean,
+    archiveIsRestore: Boolean,
+) {
     val color = when (direction) {
         SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.tertiaryContainer
         SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.primaryContainer
         else -> Color.Transparent
     }
     val icon = when (direction) {
-        SwipeToDismissBoxValue.EndToStart -> Icons.Filled.Archive
+        SwipeToDismissBoxValue.EndToStart ->
+            if (archiveIsRestore) Icons.Filled.Unarchive else Icons.Filled.Archive
         else -> Icons.Filled.Star
     }
     val label = when (direction) {
-        SwipeToDismissBoxValue.EndToStart -> "Archive"
+        SwipeToDismissBoxValue.EndToStart -> if (archiveIsRestore) "Restore" else "Archive"
         SwipeToDismissBoxValue.StartToEnd -> if (favourited) "Unfavourite" else "Favourite"
         else -> ""
     }

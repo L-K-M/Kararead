@@ -53,4 +53,45 @@ class ContentUtilsTest {
     fun `excerptFrom returns whole short text unchanged`() {
         assertEquals("short", excerptFrom("short", maxChars = 100))
     }
+
+    @Test
+    fun `minutesLeft scales with progress`() {
+        assertNull(minutesLeft(null, 0f))
+        assertNull(minutesLeft(0, 0.5f))
+        assertEquals(10, minutesLeft(10, 0f))
+        assertEquals(5, minutesLeft(10, 0.5f))
+        assertEquals(0, minutesLeft(10, 1f))
+        assertEquals(0, minutesLeft(10, 0.99f))
+    }
+
+    @Test
+    fun `extractFirstUrl pulls a url out of shared text`() {
+        assertEquals(
+            "https://example.com/post",
+            extractFirstUrl("Check this out: https://example.com/post via Reader"),
+        )
+        assertEquals(
+            "http://x.test/a",
+            extractFirstUrl("http://x.test/a"),
+        )
+        assertNull(extractFirstUrl("no link here"))
+        assertNull(extractFirstUrl(null))
+    }
+
+    @Test
+    fun `extractFirstUrl trims trailing punctuation`() {
+        assertEquals(
+            "https://example.com/page",
+            extractFirstUrl("See (https://example.com/page)."),
+        )
+    }
+
+    @Test
+    fun `formatShortDate gives friendly relative labels`() {
+        val now = 1_700_000_000_000L
+        assertEquals("today", formatShortDate(now - 1000, now))
+        assertEquals("yesterday", formatShortDate(now - 25L * 60 * 60 * 1000, now))
+        assertEquals("3d ago", formatShortDate(now - 3L * 24 * 60 * 60 * 1000, now))
+        assertNull(formatShortDate(null, now))
+    }
 }

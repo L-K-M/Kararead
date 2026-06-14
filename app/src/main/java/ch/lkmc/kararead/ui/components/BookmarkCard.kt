@@ -122,12 +122,14 @@ fun BookmarkCard(
 private fun MetaLine(bookmark: Bookmark, progress: Float, isRead: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         val readingTime = bookmark.readingTimeMinutes
-        val label = when {
+        val date = ch.lkmc.kararead.util.formatShortDate(bookmark.datePublished ?: bookmark.createdAt)
+        val base = when {
             isRead -> "Read"
             progress > 0.01f -> "${(progress * 100).toInt()}% · ${readingTime?.let { "$it min" } ?: "in progress"}"
             readingTime != null -> "$readingTime min read"
             else -> ""
         }
+        val label = listOfNotNull(base.ifEmpty { null }, date).joinToString(" · ")
         if (progress in 0.01f..0.98f) {
             ProgressRing(progress = progress, size = 14.dp)
             Spacer(Modifier.width(6.dp))

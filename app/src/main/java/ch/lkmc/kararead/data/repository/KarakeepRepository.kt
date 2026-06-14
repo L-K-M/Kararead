@@ -108,6 +108,17 @@ class KarakeepRepository @Inject constructor(
         api().updateBookmark(id, UpdateBookmarkRequest(favourited = favourited))
     }
 
+    /** Save a new link to Karakeep, optionally adding it to a list. Returns the new id. */
+    suspend fun saveLink(url: String, listId: String? = null): String {
+        val created = api().createBookmark(
+            ch.lkmc.kararead.data.remote.dto.CreateBookmarkRequest(url = url),
+        )
+        if (listId != null) {
+            runCatching { api().addBookmarkToList(listId, created.id) }
+        }
+        return created.id
+    }
+
     suspend fun deleteBookmark(id: String) {
         api().deleteBookmark(id)
         runCatching { cacheDao.delete(id); progressDao.delete(id) }

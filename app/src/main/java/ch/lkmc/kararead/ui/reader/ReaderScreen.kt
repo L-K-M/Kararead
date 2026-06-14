@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -99,12 +100,30 @@ fun ReaderScreen(
             val bm = state.article?.bookmark
             TopAppBar(
                 title = {
-                    Text(
-                        bm?.siteName ?: bm?.url?.let { prettyHost(it) } ?: "",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    androidx.compose.foundation.layout.Column {
+                        Text(
+                            bm?.siteName ?: bm?.url?.let { prettyHost(it) } ?: "",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        val left = ch.lkmc.kararead.util.minutesLeft(
+                            bm?.readingTimeMinutes, state.progress,
+                        )
+                        val sub = when {
+                            state.archived -> "Read"
+                            left == 0 -> "Almost done"
+                            left != null -> "$left min left"
+                            else -> null
+                        }
+                        if (sub != null) {
+                            Text(
+                                sub,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -169,6 +188,7 @@ fun ReaderScreen(
                 progress = { state.progress },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
                     .fillMaxWidth()
                     .height(3.dp),
                 color = MaterialTheme.colorScheme.primary,

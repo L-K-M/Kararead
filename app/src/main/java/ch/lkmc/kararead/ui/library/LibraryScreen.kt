@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -71,6 +72,14 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text(titleFor(ui)) },
                 actions = {
+                    if (items.itemCount > 0) {
+                        IconButton(onClick = {
+                            val index = (0 until items.itemCount).random()
+                            items[index]?.let { onOpenReader(it.id) }
+                        }) {
+                            Icon(Icons.Filled.Casino, contentDescription = "Surprise me")
+                        }
+                    }
                     IconButton(onClick = { sortMenuOpen = true }) {
                         Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
                     }
@@ -106,6 +115,7 @@ fun LibraryScreen(
                 onOpen = onOpenReader,
                 onArchive = viewModel::archive,
                 onFavourite = viewModel::favourite,
+                archiveIsRestore = ui.tab == LibraryTab.ARCHIVE,
                 emptyTitle = emptyTitleFor(ui),
                 emptySubtitle = emptySubtitleFor(ui),
                 emptyEmoji = if (ui.tab == LibraryTab.INBOX || ui.tab == LibraryTab.READ_LATER) "✨" else "📭",
