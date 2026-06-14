@@ -93,6 +93,11 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun selectTab(newTab: LibraryTab) {
+        if (newTab == tab.value) return
+        // Optimistic hides are scoped to the queue they happened in; a fresh
+        // queue starts with nothing hidden (otherwise an item archived in the
+        // Inbox would stay invisible in the Archive tab).
+        clearHidden()
         tab.value = newTab
     }
 
