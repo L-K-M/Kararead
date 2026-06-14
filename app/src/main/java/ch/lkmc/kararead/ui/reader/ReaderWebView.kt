@@ -22,7 +22,9 @@ import ch.lkmc.kararead.reader.ReaderHtmlBuilder
  * Reports/restores scroll progress through a JS bridge and injects auth for
  * server-hosted images.
  */
-@SuppressLint("SetJavaScriptEnabled")
+// JavascriptInterface: ReaderBridge's methods are annotated with
+// @JavascriptInterface; lint can't track the type through the Compose closure.
+@SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
 fun ReaderWebView(
     article: ReaderArticle,
@@ -40,7 +42,7 @@ fun ReaderWebView(
         ReaderHtmlBuilder.build(article, prefs)
     }
 
-    val bridge = remember {
+    val bridge: ReaderBridge = remember {
         ReaderBridge(onProgress = onProgress, onScrollDirection = onScrollDirection)
     }
 
@@ -110,7 +112,7 @@ private fun safeColor(hex: String): Int =
     runCatching { AndroidColor.parseColor(hex) }.getOrDefault(AndroidColor.WHITE)
 
 /** JS → Android bridge for scroll progress. */
-private class ReaderBridge(
+internal class ReaderBridge(
     private val onProgress: (Float) -> Unit,
     private val onScrollDirection: (Boolean) -> Unit,
 ) {
