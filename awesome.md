@@ -11,13 +11,20 @@ story, real tests. Most of what follows is about the gap between *"compiles and
 looks right"* and *"behaves right on a real device with real Karakeep data"*.
 
 **Legend:** 🐞 bug · 🔧 issue/cleanup · ✨ missing feature · 💡 idea/delight
-· status: ⬜ not started · 🟢 implementing in a branch · ⏭️ deferred (noted only)
+· status: ⬜ not started · 🟢 implementing in a branch · ✅ shipped · ⏭️ deferred (noted only)
+
+> **Update:** the branches below have since merged, and a number of the
+> deferred items have shipped too — see the ✅ markers. Notably: highlights
+> (B7), text-to-speech with voice selection (B6), reading streaks & a Stats
+> tab (D2), tag browsing (B4, folded into Search as a browse-by-tag chip
+> cloud), plus a "recently opened" strip, more typefaces, a manual accent
+> colour, and a live preview in the reading-settings sheet.
 
 ---
 
 ## A. Correctness bugs
 
-### A1. 🐞🟢 The reader shows the wrong favourite / read state for any cached article
+### A1. 🐞✅ The reader shows the wrong favourite / read state for any cached article
 `KarakeepRepository.getArticle()` is **cache-first**: if a `CachedArticleEntity`
 exists it returns immediately without hitting the network. But
 `CachedArticleEntity.toReaderArticle()` (in `Mappers.kt`) **hard-codes**
@@ -38,7 +45,7 @@ them then toggles to the opposite of reality.
 article by fetching the lightweight bookmark (`includeContent=false`), and fall
 back to the cached values when offline. Implemented on a branch.
 
-### A2. 🐞🟢 Inline server-hosted images can be stripped before they ever load
+### A2. 🐞✅ Inline server-hosted images can be stripped before they ever load
 `ReaderHtmlBuilder.sanitize()` calls `Jsoup.clean(html, safelist)` **without a
 base URI**. Jsoup resolves protocol-restricted attributes (`img[src]`) against
 the base URI; with an empty base, a *relative* Karakeep asset path like
@@ -51,7 +58,7 @@ survives sanitization.
 (`Jsoup.clean(html, baseUri, safelist)`) so relative asset URLs are preserved and
 absolutized, matching the WebView's `baseUrl`. Implemented on a branch.
 
-### A3. 🐞🟢 `hiddenIds` is global across tabs, so archiving leaks between queues
+### A3. 🐞✅ `hiddenIds` is global across tabs, so archiving leaks between queues
 `LibraryViewModel` keeps one `hiddenIds: Set<String>` shared by **all** tabs
 (Inbox / Favourites / Archive / Read-later). Archive an item in the Inbox, switch
 to the Archive tab — the very item you archived is now *hidden* there, because
@@ -59,7 +66,7 @@ the filter `data.filter { it.id !in hidden }` applies the same set everywhere.
 `clearHidden()` exists but is never called. Optimistic hiding should be scoped to
 the source it happened in (and cleared on refresh). Implemented on a branch.
 
-### A4. 🐞 "Surprise me" only rolls the dice over *loaded* pages
+### A4. 🐞✅ "Surprise me" only rolls the dice over *loaded* pages
 In `LibraryScreen`, the dice action does
 `(0 until items.itemCount).random()` then `items[index]`. `itemCount` is only the
 number of **currently-materialized** paging items, so "random" is biased toward
@@ -96,13 +103,13 @@ the client forward-compatible. Deferred.
 
 ## B. Missing features (the ones you asked about)
 
-### B1. ✨🟢 Volume-key page navigation
+### B1. ✨✅ Volume-key page navigation
 A beloved e-reader affordance that's entirely absent. Hardware volume up/down
 should page the article up/down (a screen-height minus a little overlap), without
 changing the media volume. Implemented on a branch (key handling in the reader +
 a `krPageBy` JS helper in the reader document).
 
-### B2. ✨🟢 Tap-to-toggle reading chrome
+### B2. ✨✅ Tap-to-toggle reading chrome
 `PLAN.md` promises "immersive (chrome hides on scroll, **taps reveal**)", but the
 only way to bring the top bar back is to scroll up — taps do nothing because the
 WebView swallows them. A tap in the central reading column should toggle the
@@ -116,25 +123,28 @@ chrome. Implemented alongside B1 (a tap signal from the reader document's JS).
   or measured page offsets + a page indicator). Deferred as an idea — see D8 —
   but volume keys (B1) get you most of the "turn the page" feel cheaply.
 
-### B4. ✨ Tag browsing has all the plumbing but no screen
+### B4. ✨✅ Tag browsing
 `BookmarkSource.TagSource`, `KarakeepApi.getTagBookmarks`, `getTags()`, the `Tag`
-model and a `toDomain()` mapper all exist — but **nothing in the UI ever lets you
-browse by tag.** This is a near-free feature: a Tags list (reuse the Lists screen
-pattern) opening into the existing `BookmarkList`. Strong candidate; implementing
-on a branch if time allows.
+model and a `toDomain()` mapper all existed — but nothing in the UI let you browse
+by tag. **Done:** the empty Search view now shows a browse-by-tag chip cloud (the
+most-used tags); tapping a chip fills the search box with `#tag` and runs the
+search. (A short-lived standalone Tags tab was folded into Search.)
 
 ### B5. ✨ Next-article / auto-advance
 Finishing an article dumps you back to the list. A reader app wants a gentle
 "→ Next in queue" (and an option to archive-on-finish). Great delight, medium
 effort (the reader needs to know its queue). Deferred (note).
 
-### B6. ✨ Text-to-speech ("listen to this")
-We already extract clean plain text (`textContent`). Android `TextToSpeech` over
-it would make Kararead a listen-later app. Medium effort. Deferred (note).
+### B6. ✨✅ Text-to-speech ("listen to this")
+We already extract clean plain text (`textContent`). **Done:** a "Listen"
+mini-player narrates the article with Android `TextToSpeech` (`tts/ArticleSpeaker`)
+— play/pause, sentence skip, and a voice picker; the chosen voice is persisted.
 
-### B7. ✨ Highlights
-The API + DTOs + `Highlight` domain model + repository read path exist; only the
-WebView selection bridge and offset mapping are missing. Sizeable. Deferred.
+### B7. ✨✅ Highlights
+The API + DTOs + `Highlight` domain model + repository read path existed. **Done:**
+selecting text in the reader adds a "Highlight" action that creates a highlight
+(synced to Karakeep) via a JS selection/offset-mapping bridge; tap a highlight to
+delete it.
 
 ### B8. ✨ Pull-to-refresh on the Lists screen
 `ListsScreen` only refreshes via the error-state "Retry" button; there's no
@@ -144,14 +154,14 @@ pull-to-refresh like the bookmark lists have. Small. Deferred (note).
 
 ## C. Engineering / project health
 
-### C1. 🔧🟢 The offline cache grows forever
+### C1. 🔧✅ The offline cache grows forever
 `CachedArticleDao.deleteOlderThan()` exists but is **never called**, and there's
 a `WorkManager` dependency + Hilt worker factory wired up with **no worker**.
 Caches grow unbounded. A tiny periodic (or on-launch) trim of articles older than
 N days closes the loop and finally uses the WorkManager scaffold for its stated
 purpose. Implementing on a branch.
 
-### C2. 🔧🟢 Unused `POST_NOTIFICATIONS` permission
+### C2. 🔧✅ Unused `POST_NOTIFICATIONS` permission
 Declared in the manifest but nothing ever posts a notification. Permissions you
 don't use are a (small) trust and Play-listing cost. Remove it (or earn it with a
 real notification later). Folded into the cache/cleanup branch.
@@ -188,10 +198,10 @@ fakes would have caught A1. Deferred.
 The dice is great — extend it: a tiny shake gesture to open a random unread
 article, or a dice on empty states ("nothing to read? here's an old favourite").
 
-### D2. 💡 Reading streak & "minutes read today"
-We already persist progress events. A gentle, non-gamified "you've read 12
-minutes today / 3-day streak ✨" on the empty-inbox celebration would reward the
-calm habit without nagging.
+### D2. 💡✅ Reading streak & "minutes read today"
+We persist reading time per day (`reading_day`). **Done:** a Stats tab shows the
+current streak, minutes read today/this week, and a 14-day chart; the streak also
+appears on the empty-inbox celebration. Gentle, non-gamified.
 
 ### D3. 💡 "Tonight's queue" / estimated time to clear the inbox
 Sum reading-time across the unread queue: "≈ 38 min to reach inbox zero." Pairs
@@ -233,10 +243,10 @@ the "calm moment" north star.
 
 ---
 
-## What I'm implementing now
+## What was implemented
 
-Picking the high-confidence, high-value, low-conflict items and giving each its
-own branch (so they can be reviewed and merged independently):
+The high-confidence, high-value items were each given their own branch (reviewed
+and merged independently), and all have since shipped:
 
 1. **A1** — correct favourite/read state for cached articles *(data/reader)*
 2. **A3** — per-source optimistic hiding in the library *(library VM)*
@@ -244,9 +254,10 @@ own branch (so they can be reviewed and merged independently):
 4. **B1 + B2** — volume-key paging + tap-to-toggle chrome *(reader)*
 5. **C1 + C2** — offline-cache trimming via WorkManager + drop the unused
    notifications permission *(data/app/manifest)*
-6. **B4** — tag browsing screen *(new UI, reuses existing plumbing)*
+6. **B4** — tag browsing *(folded into Search as a browse-by-tag chip cloud)*
 
-Each branch touches a mostly-disjoint set of files to keep merges painless. The
-remaining items are documented above as deliberate, scoped follow-ups.
-</content>
-</invoke>
+Subsequent passes also shipped highlights (B7), text-to-speech with voice
+selection (B6), reading streaks and a Stats tab (D2), plus polish not in this
+list: a "recently opened" strip on the library, more typefaces with a live
+preview, and a manual accent colour. The remaining items above stand as
+deliberate, scoped follow-ups.

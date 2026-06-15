@@ -32,17 +32,28 @@ Kararead is that reader. It talks to your existing Karakeep server and turns you
   stylesheet: comfortable measure, real blockquotes, code blocks, figures and
   images.
 - **Reading themes.** Light, Sepia, Dark, and a true-black OLED mode.
-- **Typography you control.** Typeface (serif/sans/mono/system), text size, line
-  spacing, margins, and justification — applied live.
+- **Typography you control.** Eight typefaces (serif, sans, condensed, slab,
+  humanist, mono, casual, system), text size, line spacing, margins, and
+  justification — applied live, with a preview right in the settings sheet.
 - **Resume where you left off.** Per-article scroll position is saved locally and
   restored automatically, with a progress indicator on every card.
 - **Frictionless triage.** Swipe to archive (= mark read) or favourite; undo from
   a snackbar. Mark read/unread and favourite from the reader too.
+- **Listen to articles.** Built-in text-to-speech reads any article aloud, with
+  play/pause, sentence skip, and a choice of voice.
+- **Highlights.** Select text in the reader to highlight it (synced to Karakeep);
+  tap a highlight to remove it.
+- **Reading stats & streaks.** A Stats tab with your reading streak, minutes read
+  today and this week, and a 14-day chart — gentle, not gamified.
+- **Jump back in.** A "recently opened" strip at the top of the library.
+- **Volume-key paging.** Optionally turn the page with the hardware volume keys.
 - **Offline-friendly.** Opened articles are cached so they reopen instantly and
-  survive going offline.
-- **Search** with Karakeep's qualifier syntax (`#tag`, `is:fav`, `url:…`).
-- **Calm by default.** Auto-hiding chrome while reading, Material 3 design,
-  dynamic color on Android 12+, light/dark app theme.
+  survive going offline; the top of your queue can be prefetched on Wi-Fi.
+- **Search & tags.** Karakeep's qualifier syntax (`#tag`, `is:fav`, `url:…`), plus
+  a browse-by-tag chip cloud when the search box is empty.
+- **Calm by default.** Auto-hiding chrome while reading (tap to reveal), Material 3
+  design, dynamic color on Android 12+ (or a manual accent color), light/dark app
+  theme.
 
 > **Read state mapping:** Karakeep has no separate read/unread flag, so Kararead
 > uses Karakeep's `archived` state as "done reading". Reading *progress* is
@@ -100,14 +111,16 @@ ch.lkmc.kararead
 ├── data/
 │   ├── remote/   Retrofit KarakeepApi, DTOs (polymorphic content union),
 │   │             runtime-configured client + auth, DTO→domain mappers
-│   ├── local/    Room: reading progress + offline article cache
+│   ├── local/    Room: reading progress, offline article cache, reading stats
 │   ├── prefs/    DataStore settings (API key kept in a backup-excluded store)
 │   ├── paging/   Cursor-based Paging 3 source
 │   ├── repository/ KarakeepRepository — the single source of truth
 │   └── model/    Domain models
 ├── reader/       HTML → themed reader document; authenticated asset loading
+├── tts/          Text-to-speech narration (ArticleSpeaker)
+├── work/         WorkManager: offline prefetch + cache cleanup
 └── ui/           Compose screens (onboarding, library, reader, lists, search,
-                  settings), theme, navigation, shared components
+                  stats, settings), theme, navigation, shared components
 ```
 
 **Stack:** Kotlin · Jetpack Compose / Material 3 · Hilt · Retrofit + OkHttp +
@@ -119,8 +132,8 @@ scroll progress, and a `WebViewClient` that injects the bearer token for
 server-hosted images.
 
 See [`PLAN.md`](PLAN.md) for the full design rationale and the Karakeep API
-reference, and [`IMPROVEMENTS.md`](IMPROVEMENTS.md) for the post-build review and
-roadmap.
+reference, and [`IMPROVEMENTS.md`](IMPROVEMENTS.md) / [`awesome.md`](awesome.md)
+for the post-build reviews and roadmap.
 
 ## CI/CD
 

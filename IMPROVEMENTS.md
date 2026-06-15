@@ -47,16 +47,16 @@ Legend: ✅ done in this pass · 🔜 planned/future · 💡 idea
    The reader now shows estimated minutes remaining based on progress and the
    article's reading time — a small but beloved Instapaper touch.
 
-8. **Highlights.** 🔜
-   Karakeep supports highlights (CRUD exists in the API and our DTOs). Viewing
-   and creating highlights via WebView text selection is a worthwhile but
-   sizeable feature (selection bridge + offset mapping); deferred.
+8. **Highlights.** ✅
+   Select text in the reader to create a highlight (synced to Karakeep via the
+   API); tap a highlight to delete it. Implemented with a WebView text-selection
+   action plus a JS offset-mapping bridge.
 
 9. **Bulk actions / "mark all read".** 💡 Future.
 
-10. **Text-to-speech ("listen to article").** 💡
-    Android `TextToSpeech` over the parsed text would make Kararead a
-    listen-later app too. Medium effort; future.
+10. **Text-to-speech ("listen to article").** ✅
+    A "Listen" mini-player narrates the parsed text with Android `TextToSpeech`
+    — play/pause, sentence skip, and a voice picker.
 
 ## C. Delight & polish
 
@@ -67,7 +67,7 @@ Legend: ✅ done in this pass · 🔜 planned/future · 💡 idea
     When known, the article's publish date joins the card meta line.
 
 13. **"Surprise me".** ✅
-    A dice action on the Library that opens a random article from the current
+    A shuffle action on the Library that opens a random article from the current
     queue — for when you can't decide what to read.
 
 14. **Caught-up celebration.** ✅ (already present)

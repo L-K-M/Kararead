@@ -95,21 +95,24 @@ ch.lkmc.kararead
 ├── di/                                    Hilt modules (network, db, prefs)
 ├── data/
 │   ├── remote/  KarakeepApi (Retrofit), DTOs, AuthInterceptor, ApiProvider
-│   ├── local/   Room db: ReadingProgress, CachedArticle, dao
+│   ├── local/   Room db: ReadingProgress, CachedArticle, ReadingDay (stats), dao
 │   ├── prefs/   SettingsRepository (DataStore: connection + reader prefs)
 │   ├── paging/  BookmarksPagingSource (cursor → Paging 3)
 │   ├── repository/ KarakeepRepository(+Impl) — the single source of truth
 │   └── model/   Domain models (Bookmark, ReaderArticle, ReaderPrefs, …)
 ├── reader/      HTML → styled reader document (CSS themes, asset auth)
+├── tts/         Text-to-speech narration (ArticleSpeaker)
+├── work/        WorkManager: offline prefetch + cache cleanup
 └── ui/
-    ├── theme/        Material 3 + reader palettes (light/sepia/dark)
+    ├── theme/        Material 3 + reader palettes (light/sepia/dark) + accent
     ├── navigation/   NavHost + type-safe routes
     ├── components/   BookmarkCard, EmptyState, ProgressRing, …
     ├── onboarding/   Connect to server (URL + API key, validated)
-    ├── library/      The queue (Paging) + filters/sort + swipe actions
+    ├── library/      The queue (Paging) + filters/sort + swipe + recents strip
     ├── lists/        Lists browser
-    ├── search/       Search
-    ├── reader/       The reader (WebView + typography controls + progress)
+    ├── search/       Search + browse-by-tag
+    ├── stats/        Reading streak + minutes + chart
+    ├── reader/       The reader (WebView + typography controls + progress + TTS)
     └── settings/     Connection, default reader prefs, about
 ```
 
@@ -153,13 +156,17 @@ ch.lkmc.kararead
    "You're all caught up ✨".
 3. **Reader** — the heart. WebView with reader CSS; immersive (chrome hides on
    scroll, taps reveal). Typography sheet: theme (light/sepia/dark/black-OLED),
-   font family (serif/sans/mono/system), size, line height, margins, justify.
-   Thin top progress bar; resume scroll. Actions: favourite, archive (done),
-   open original, share, mark unread. Reading-time + % in the bar.
+   font family (eight typefaces), size, line height, margins, justify — with a
+   live preview. Thin top progress bar; resume scroll. Volume keys turn pages;
+   text selection can create highlights. Actions: favourite, archive (done),
+   open original, share, mark unread, listen (text-to-speech). Reading-time + %
+   in the bar.
 4. **Lists** — browse Karakeep lists, open one as a queue.
-5. **Search** — query box → results list (reuses card + reader).
-6. **Settings** — connection (with sign-out), default reader prefs, theme,
-   "read-later list" picker, about/version, open-source licenses.
+5. **Search** — query box → results list (reuses card + reader); the empty state
+   offers a browse-by-tag chip cloud.
+6. **Stats** — reading streak, minutes read today/this week, and a 14-day chart.
+7. **Settings** — connection (with sign-out), default reader prefs, theme +
+   manual accent colour, "read-later list" picker, about/version, licenses.
 
 ---
 
@@ -191,15 +198,19 @@ GitHub Actions:
 
 - [x] Research Karakeep API, Instapaper/read-later UX
 - [x] Gradle project, version catalog, wrapper, CI-ready signing
-- [ ] Theme, navigation, app scaffold
-- [ ] Data layer: DTOs + polymorphic content, Retrofit API, repository, paging
-- [ ] Local: Room (progress + cache), DataStore settings
-- [ ] DI wiring
-- [ ] Onboarding screen
-- [ ] Library queue (paging, swipe actions, filters)
-- [ ] Reader (WebView, CSS themes, typography controls, progress persistence)
-- [ ] Lists, Search, Settings
-- [ ] Unit tests
-- [ ] CI/CD + Dependabot + README
-- [ ] Build green (lint + tests + assembleDebug)
-- [ ] Review → IMPROVEMENTS.md → execute worthwhile items
+- [x] Theme, navigation, app scaffold
+- [x] Data layer: DTOs + polymorphic content, Retrofit API, repository, paging
+- [x] Local: Room (progress + cache + reading stats), DataStore settings
+- [x] DI wiring
+- [x] Onboarding screen
+- [x] Library queue (paging, swipe actions, filters)
+- [x] Reader (WebView, CSS themes, typography controls, progress persistence)
+- [x] Lists, Search, Settings, Stats
+- [x] Unit tests
+- [x] CI/CD + Dependabot + README
+- [x] Build green (lint + tests + assembleDebug)
+- [x] Review → IMPROVEMENTS.md / awesome.md → execute worthwhile items
+- [x] Follow-ups shipped: highlights, text-to-speech (voice picker), volume-key
+      paging, tap-to-reveal chrome, reading streaks + Stats tab, tag browsing in
+      Search, "recently opened" strip, more typefaces + live preview, manual
+      accent colour
