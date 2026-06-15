@@ -21,6 +21,13 @@ data class SpeechState(
     val speaking: Boolean get() = active && !paused
 }
 
+/** A selectable TTS voice. [id] is the engine's voice name; [label]/[detail] for display. */
+data class VoiceInfo(
+    val id: String,
+    val label: String,
+    val detail: String,
+)
+
 /**
  * Reads an article's plain text aloud with Android [TextToSpeech]. The text is
  * split into chunks (one utterance each) so progress can be tracked and the user
@@ -39,8 +46,14 @@ class ArticleSpeaker @Inject constructor(
 
     private var chunks: List<String> = emptyList()
 
+    /** The voice the user prefers (engine voice name); applied once the engine is ready. */
+    var preferredVoiceId: String? = null
+
     private val _state = MutableStateFlow(SpeechState())
     val state: StateFlow<SpeechState> = _state
+
+    private val _voices = MutableStateFlow<List<VoiceInfo>>(emptyList())
+    val voices: StateFlow<List<VoiceInfo>> = _voices
 
     private fun ensureEngine() {
         if (tts != null) return
@@ -52,12 +65,49 @@ class ArticleSpeaker @Inject constructor(
                         tts?.isLanguageAvailable(it) == TextToSpeech.LANG_COUNTRY_AVAILABLE
                 } ?: Locale.ENGLISH
                 tts?.setOnUtteranceProgressListener(listener)
+                publishVoices()
+                applyPreferredVoice()
                 pendingStart?.invoke()
                 pendingStart = null
             } else {
                 _state.update { it.copy(active = false, failed = true) }
             }
         }
+    }
+
+    private fun publishVoices() {
+        val current = Locale.getDefault().language
+        val list = runCatching {
+            tts?.voices.orEmpty()
+                .filterNot { it.isNetworkConnectionRequired }
+                .filterNot { it.features.contains(android.speech.tts.TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
+                .sortedWith(
+                    compareByDescending<android.speech.tts.Voice> { it.locale.language == current }
+                        .thenBy { it.locale.displayName }
+                        .thenByDescending { it.quality },
+                )
+                .map { v ->
+                    VoiceInfo(
+                        id = v.name,
+                        label = v.locale.displayName.ifBlank { v.name },
+                        detail = v.name,
+                    )
+                }
+        }.getOrDefault(emptyList())
+        _voices.value = list
+    }
+
+    private fun applyPreferredVoice() {
+        val id = preferredVoiceId ?: return
+        tts?.voices?.firstOrNull { it.name == id }?.let { tts?.voice = it }
+    }
+
+    /** Switch the narration voice; re-speaks the current sentence so it takes effect. */
+    fun setVoice(id: String) {
+        preferredVoiceId = id
+        tts?.voices?.firstOrNull { it.name == id }?.let { tts?.voice = it }
+        val s = _state.value
+        if (s.active && !s.paused) enqueueFrom(s.index)
     }
 
     private val listener = object : UtteranceProgressListener() {
