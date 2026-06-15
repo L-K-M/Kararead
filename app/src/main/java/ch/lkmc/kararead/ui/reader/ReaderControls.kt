@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -63,74 +64,83 @@ fun ReaderControlsSheet(
         Column(
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .fillMaxHeight(0.9f)
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+                .padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("Reading", style = MaterialTheme.typography.titleLarge)
 
-            // Live preview, so size/spacing/typeface/theme changes are visible
-            // without leaving the sheet.
+            // Live preview, pinned above the scrolling controls so the effect of
+            // every change stays visible while you adjust.
             PreviewCard(prefs, fontFamilies)
 
-            // Theme swatches
-            SectionLabel("Theme")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ReaderTheme.entries.forEach { theme ->
-                    ThemeSwatch(
-                        theme = theme,
-                        selected = prefs.theme == theme,
-                        onClick = { onTheme(theme) },
-                    )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                // Theme swatches
+                SectionLabel("Theme")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ReaderTheme.entries.forEach { theme ->
+                        ThemeSwatch(
+                            theme = theme,
+                            selected = prefs.theme == theme,
+                            onClick = { onTheme(theme) },
+                        )
+                    }
                 }
-            }
 
-            // Font family
-            SectionLabel("Typeface")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReaderFont.entries.forEach { font ->
-                    FilterChip(
-                        selected = prefs.font == font,
-                        onClick = { onFont(font) },
-                        label = { Text(fontLabel(font), fontFamily = fontFamilies[font]) },
-                    )
+                // Font family
+                SectionLabel("Typeface")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReaderFont.entries.forEach { font ->
+                        FilterChip(
+                            selected = prefs.font == font,
+                            onClick = { onFont(font) },
+                            label = { Text(fontLabel(font), fontFamily = fontFamilies[font]) },
+                        )
+                    }
                 }
+
+                // Font size
+                SliderRow(
+                    label = "Text size",
+                    value = prefs.fontScale,
+                    valueRange = 0.7f..2.0f,
+                    steps = 12,
+                    onChange = onFontScale,
+                    valueText = "${(prefs.fontScale * 100).toInt()}%",
+                )
+
+                // Line height
+                SliderRow(
+                    label = "Line spacing",
+                    value = prefs.lineHeight,
+                    valueRange = 1.2f..2.2f,
+                    steps = 9,
+                    onChange = onLineHeight,
+                    valueText = String.format("%.1f", prefs.lineHeight),
+                )
+
+                // Margins
+                SliderRow(
+                    label = "Margins",
+                    value = prefs.horizontalMargin.toFloat(),
+                    valueRange = 0f..48f,
+                    steps = 11,
+                    onChange = { onMargin(it.toInt()) },
+                    valueText = "${prefs.horizontalMargin}",
+                )
+
+                ToggleRow("Justify text", prefs.justify, onJustify)
+                ToggleRow("Keep screen on", prefs.keepScreenOn, onKeepScreenOn)
+                ToggleRow("Volume keys turn pages", prefs.volumeKeyPaging, onVolumeKeyPaging)
+                Spacer(Modifier.height(8.dp))
             }
-
-            // Font size
-            SliderRow(
-                label = "Text size",
-                value = prefs.fontScale,
-                valueRange = 0.7f..2.0f,
-                steps = 12,
-                onChange = onFontScale,
-                valueText = "${(prefs.fontScale * 100).toInt()}%",
-            )
-
-            // Line height
-            SliderRow(
-                label = "Line spacing",
-                value = prefs.lineHeight,
-                valueRange = 1.2f..2.2f,
-                steps = 9,
-                onChange = onLineHeight,
-                valueText = String.format("%.1f", prefs.lineHeight),
-            )
-
-            // Margins
-            SliderRow(
-                label = "Margins",
-                value = prefs.horizontalMargin.toFloat(),
-                valueRange = 0f..48f,
-                steps = 11,
-                onChange = { onMargin(it.toInt()) },
-                valueText = "${prefs.horizontalMargin}",
-            )
-
-            ToggleRow("Justify text", prefs.justify, onJustify)
-            ToggleRow("Keep screen on", prefs.keepScreenOn, onKeepScreenOn)
-            ToggleRow("Volume keys turn pages", prefs.volumeKeyPaging, onVolumeKeyPaging)
         }
     }
 }
