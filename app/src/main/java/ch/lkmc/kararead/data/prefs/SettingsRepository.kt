@@ -45,6 +45,7 @@ class SettingsRepository @Inject constructor(
         val JUSTIFY = booleanPreferencesKey("justify")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val VOLUME_KEY_PAGING = booleanPreferencesKey("volume_key_paging")
+        val TTS_VOICE = stringPreferencesKey("tts_voice")
         val APP_THEME = stringPreferencesKey("app_theme")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val ACCENT_COLOR = intPreferencesKey("accent_color")
@@ -127,6 +128,13 @@ class SettingsRepository @Inject constructor(
             p[Keys.KEEP_SCREEN_ON] = prefs.keepScreenOn
             p[Keys.VOLUME_KEY_PAGING] = prefs.volumeKeyPaging
         }
+    }
+
+    /** Preferred TTS voice id (engine voice name), or null for the engine default. */
+    val ttsVoice: Flow<String?> = context.settingsStore.data.map { it[Keys.TTS_VOICE] }
+
+    suspend fun setTtsVoice(id: String) {
+        context.settingsStore.edit { it[Keys.TTS_VOICE] = id }
     }
 
     val appThemeMode: Flow<AppThemeMode> = context.settingsStore.data.map { p ->

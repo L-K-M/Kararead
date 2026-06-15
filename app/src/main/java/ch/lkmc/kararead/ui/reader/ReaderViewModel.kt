@@ -14,6 +14,7 @@ import ch.lkmc.kararead.data.repository.KarakeepRepository
 import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.tts.ArticleSpeaker
 import ch.lkmc.kararead.tts.SpeechState
+import ch.lkmc.kararead.tts.VoiceInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -50,6 +51,10 @@ class ReaderViewModel @Inject constructor(
 ) : ViewModel() {
 
     val speech: StateFlow<SpeechState> = speaker.state
+    val voices: StateFlow<List<VoiceInfo>> = speaker.voices
+
+    val ttsVoiceId: StateFlow<String?> =
+        settings.ttsVoice.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val bookmarkId: String = savedStateHandle.get<String>("bookmarkId").orEmpty()
 
@@ -90,6 +95,11 @@ class ReaderViewModel @Inject constructor(
 
     init {
         load()
+        // Keep the speaker's preferred voice in sync with the saved setting so the
+        // first "Listen" already uses it.
+        viewModelScope.launch {
+            settings.ttsVoice.collect { speaker.preferredVoiceId = it }
+        }
     }
 
     fun load(forceRefresh: Boolean = false) {
@@ -209,6 +219,11 @@ class ReaderViewModel @Inject constructor(
     fun toggleSpeech() = speaker.togglePlayPause()
     fun skipSpeech(delta: Int) = speaker.skipBy(delta)
     fun stopSpeech() = speaker.stop()
+
+    fun setVoice(id: String) {
+        speaker.setVoice(id)
+        viewModelScope.launch { settings.setTtsVoice(id) }
+    }
 
     override fun onCleared() {
         speaker.shutdown()

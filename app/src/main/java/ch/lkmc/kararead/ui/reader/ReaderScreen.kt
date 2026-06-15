@@ -9,9 +9,13 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -23,6 +27,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
@@ -70,6 +75,8 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs by viewModel.readerPrefs.collectAsStateWithLifecycle()
     val speech by viewModel.speech.collectAsStateWithLifecycle()
+    val voices by viewModel.voices.collectAsStateWithLifecycle()
+    val ttsVoiceId by viewModel.ttsVoiceId.collectAsStateWithLifecycle()
     val highlights by viewModel.highlights.collectAsStateWithLifecycle()
     val highlightsJson by viewModel.highlightsJson.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -80,6 +87,7 @@ fun ReaderScreen(
     var overflowOpen by remember { mutableStateOf(false) }
     var showHighlights by remember { mutableStateOf(false) }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    var showVoicePicker by remember { mutableStateOf(false) }
     val pager = remember { ReaderPager() }
 
     androidx.compose.runtime.LaunchedEffect(prefs.keepScreenOn) {
@@ -279,9 +287,19 @@ fun ReaderScreen(
                 onToggle = viewModel::toggleSpeech,
                 onPrev = { viewModel.skipSpeech(-1) },
                 onNext = { viewModel.skipSpeech(1) },
+                onVoice = { showVoicePicker = true }.takeIf { voices.isNotEmpty() },
                 onStop = viewModel::stopSpeech,
             )
         }
+    }
+
+    if (showVoicePicker) {
+        VoicePickerSheet(
+            voices = voices,
+            selectedId = ttsVoiceId,
+            onPick = { viewModel.setVoice(it); showVoicePicker = false },
+            onDismiss = { showVoicePicker = false },
+        )
     }
 
     if (showControls) {
@@ -371,6 +389,7 @@ private fun ListenBar(
     onToggle: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onVoice: (() -> Unit)?,
     onStop: () -> Unit,
 ) {
     androidx.compose.material3.Surface(
@@ -408,8 +427,63 @@ private fun ListenBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (onVoice != null) {
+                IconButton(onClick = onVoice) {
+                    Icon(Icons.Filled.RecordVoiceOver, contentDescription = "Choose voice")
+                }
+            }
             IconButton(onClick = onStop) {
                 Icon(Icons.Filled.Close, contentDescription = "Stop")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VoicePickerSheet(
+    voices: List<ch.lkmc.kararead.tts.VoiceInfo>,
+    selectedId: String?,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        androidx.compose.foundation.layout.Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text("Voice", style = MaterialTheme.typography.titleLarge)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.lazy.LazyColumn(
+                Modifier.heightIn(max = 420.dp),
+            ) {
+                items(voices, key = { it.id }) { voice ->
+                    androidx.compose.foundation.layout.Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(voice.id) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = voice.id == selectedId,
+                            onClick = { onPick(voice.id) },
+                        )
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+                        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                            Text(voice.label, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                voice.detail,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
