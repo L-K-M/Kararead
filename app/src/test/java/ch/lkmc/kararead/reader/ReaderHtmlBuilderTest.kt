@@ -80,6 +80,15 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
+    fun `reader script handles in-page anchor links`() {
+        // The built document should intercept same-document fragment links and
+        // scroll within the article rather than letting them navigate away.
+        val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
+        assertTrue(out.contains("scrollIntoView"))
+        assertTrue(out.contains("In-page anchor"))
+    }
+
+    @Test
     fun `empty content shows a friendly placeholder`() {
         val out = ReaderHtmlBuilder.build(article(null), ReaderPreferences())
         assertTrue(out.contains("no readable content"))

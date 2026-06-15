@@ -386,6 +386,34 @@ body {
       n = n.parentNode;
     }
   }, false);
+
+  // In-page anchor / footnote links: scroll within the article instead of
+  // navigating away. With the server origin as the document's base URL, a bare
+  // "#fn1" otherwise resolves to the server root and gets handed to an external
+  // browser. Only same-document fragments are intercepted; genuine external
+  // links fall through to the host (which opens them in the browser).
+  document.addEventListener('click', function(e){
+    var n = e.target;
+    while (n && n !== document.body) {
+      if (n.tagName === 'A' && n.getAttribute && n.getAttribute('href')) {
+        var raw = n.getAttribute('href');
+        var hash = '';
+        if (raw.charAt(0) === '#') hash = raw;
+        else if (n.hash && n.pathname === location.pathname && n.search === location.search) hash = n.hash;
+        if (hash.length > 1) {
+          var id; try { id = decodeURIComponent(hash.substring(1)); } catch(err){ id = hash.substring(1); }
+          var target = document.getElementById(id) || document.getElementsByName(id)[0];
+          if (target && target.scrollIntoView) {
+            e.preventDefault();
+            krStopSticky();
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+          return;
+        }
+      }
+      n = n.parentNode;
+    }
+  }, false);
   ${highlightJs()}
   // Signal that the document is ready for progress restore.
   window.requestAnimationFrame(function(){
