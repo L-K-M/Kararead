@@ -42,10 +42,16 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import ch.lkmc.kararead.data.model.prettyHost
 import ch.lkmc.kararead.ui.components.LoadingState
 import ch.lkmc.kararead.ui.components.MessageState
+
+/** Granularity of the reading-time tally, in seconds. */
+private const val READING_TICK_SECONDS = 15L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +71,18 @@ fun ReaderScreen(
 
     androidx.compose.runtime.LaunchedEffect(prefs.keepScreenOn) {
         view.keepScreenOn = prefs.keepScreenOn
+    }
+
+    // Tally foreground reading time (powers the reading streak), only while the
+    // reader is actually resumed on screen.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    androidx.compose.runtime.LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                kotlinx.coroutines.delay(READING_TICK_SECONDS * 1000L)
+                viewModel.recordReadingSeconds(READING_TICK_SECONDS)
+            }
+        }
     }
 
     // Claim the hardware volume keys for page turning while this screen is shown.

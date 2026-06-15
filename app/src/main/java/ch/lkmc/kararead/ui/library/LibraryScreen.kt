@@ -171,7 +171,14 @@ private fun emptyTitleFor(ui: LibraryUiState): String = when (ui.tab) {
 }
 
 private fun emptySubtitleFor(ui: LibraryUiState): String? = when (ui.tab) {
-    LibraryTab.INBOX, LibraryTab.READ_LATER -> "Save something in Karakeep and it'll appear here."
+    LibraryTab.INBOX, LibraryTab.READ_LATER -> {
+        val base = "Save something in Karakeep and it'll appear here."
+        if (ui.currentStreakDays > 0) {
+            "$base\n🔥 ${ui.currentStreakDays}-day reading streak — keep it going!"
+        } else {
+            base
+        }
+    }
     LibraryTab.FAVOURITES -> "Tap the star on an article to keep it here."
     LibraryTab.ARCHIVE -> "Articles you finish will land here."
 }

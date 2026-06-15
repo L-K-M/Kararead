@@ -49,3 +49,19 @@ interface CachedArticleDao {
     @Query("DELETE FROM cached_article")
     suspend fun clear()
 }
+
+@Dao
+interface ReadingStatsDao {
+
+    @Query("SELECT * FROM reading_day WHERE date = :date")
+    suspend fun get(date: String): ReadingDayEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(day: ReadingDayEntity)
+
+    @Query("SELECT * FROM reading_day ORDER BY date DESC")
+    fun observeAll(): Flow<List<ReadingDayEntity>>
+
+    @Query("DELETE FROM reading_day")
+    suspend fun clear()
+}

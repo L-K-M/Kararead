@@ -31,3 +31,15 @@ data class CachedArticleEntity(
     val favourited: Boolean = false,
     val cachedAt: Long,
 )
+
+/**
+ * One row per calendar day the user read, with the seconds spent reading that
+ * day. Powers the reading streak and "minutes read today".
+ */
+@Entity(tableName = "reading_day")
+data class ReadingDayEntity(
+    /** Local date as ISO `yyyy-MM-dd`. */
+    @PrimaryKey val date: String,
+    val seconds: Long,
+    val updatedAt: Long,
+)

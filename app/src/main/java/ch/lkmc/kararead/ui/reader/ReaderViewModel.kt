@@ -148,5 +148,10 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /** Record foreground reading time (driven by the screen's lifecycle ticker). */
+    fun recordReadingSeconds(seconds: Long) {
+        viewModelScope.launch { repository.addReadingSeconds(seconds) }
+    }
+
     fun url(): String? = _state.value.article?.bookmark?.url
 }
