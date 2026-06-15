@@ -70,9 +70,31 @@ fun BookmarkDto.toReaderArticle(assetUrl: (String) -> String?): ReaderArticle {
     val plain = htmlToPlainText(html) ?: text?.text
     return ReaderArticle(
         bookmark = toDomain(assetUrl),
-        htmlContent = html ?: text?.text?.let { "<p>${it.replace("\n\n", "</p><p>")}</p>" },
+        htmlContent = html ?: text?.text?.let { plainTextToHtml(it) },
         textContent = plain,
     )
+}
+
+/**
+ * Turn a plain-text note ([ContentDto.Text]) into safe reader HTML.
+ *
+ * Crucially this HTML-escapes the text first: an un-escaped `<`, `>` or `&`
+ * would be parsed as markup by the reader's Jsoup sanitizer and then silently
+ * stripped — dropping the user's own words (e.g. "a < b", "I love <html>").
+ * Blank-line-separated paragraphs become `<p>` blocks and single newlines
+ * become `<br>`, so the note keeps its shape.
+ */
+internal fun plainTextToHtml(text: String): String {
+    val escaped = text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    return escaped
+        .split(Regex("\\n{2,}"))
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .joinToString("") { "<p>${it.replace("\n", "<br>")}</p>" }
+        .ifEmpty { "<p></p>" }
 }
 
 fun ReaderArticle.toCacheEntity(now: Long): CachedArticleEntity = CachedArticleEntity(
