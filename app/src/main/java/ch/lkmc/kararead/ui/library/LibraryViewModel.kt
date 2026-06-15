@@ -65,6 +65,9 @@ class LibraryViewModel @Inject constructor(
     val progress: StateFlow<Map<String, Float>> =
         repository.allProgress().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
+    val cachedIds: StateFlow<Set<String>> =
+        repository.cachedIds().stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
     private val pagingFlow: Flow<PagingData<Bookmark>> =
         combine(tab, sort, readLater) { t, s, rl -> Triple(t, s, rl) }
             .flatMapLatest { (t, s, rl) ->

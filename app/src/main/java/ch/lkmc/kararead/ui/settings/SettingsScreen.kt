@@ -93,13 +93,50 @@ fun SettingsScreen(
             )
 
             HorizontalDivider()
-            SectionHeader("Storage")
-            SettingRow(
-                title = "Offline cache",
-                subtitle = "${state.cachedCount} article(s) cached for offline reading",
-                onClick = viewModel::clearCache,
-                actionLabel = "Clear",
+            SectionHeader("Offline reading")
+            ToggleSetting(
+                title = "Download for offline",
+                subtitle = "Keep your unread queue on the device, so there's always something to read without a connection.",
+                checked = state.offline.enabled,
+                onChange = viewModel::setOfflineEnabled,
             )
+            if (state.offline.enabled) {
+                ToggleSetting(
+                    title = "Only on Wi-Fi",
+                    subtitle = "Avoid using mobile data to download articles.",
+                    checked = state.offline.wifiOnly,
+                    onChange = viewModel::setOfflineWifiOnly,
+                )
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("Keep this many articles", style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        Modifier.padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(10, 20, 50).forEach { n ->
+                            FilterChip(
+                                selected = state.offline.keepCount == n,
+                                onClick = { viewModel.setOfflineKeepCount(n) },
+                                label = { Text("$n") },
+                            )
+                        }
+                    }
+                }
+            }
+            SettingRow(
+                title = "Available offline",
+                subtitle = offlineStatusSubtitle(state),
+                onClick = if (state.offline.enabled) viewModel::downloadOfflineNow else null,
+                actionLabel = if (state.offline.enabled) "Download now" else null,
+            )
+            if (state.cachedCount > 0) {
+                SettingRow(
+                    title = "Clear downloads",
+                    subtitle = "Remove all cached articles from this device.",
+                    onClick = viewModel::clearCache,
+                    actionLabel = "Clear",
+                )
+            }
 
             HorizontalDivider()
             SectionHeader("About")
@@ -187,6 +224,16 @@ private fun themeLabel(mode: AppThemeMode) = when (mode) {
     AppThemeMode.SYSTEM -> "System"
     AppThemeMode.LIGHT -> "Light"
     AppThemeMode.DARK -> "Dark"
+}
+
+private fun offlineStatusSubtitle(state: SettingsUiState): String {
+    val count = state.cachedCount
+    val ready = when (count) {
+        0 -> "Nothing downloaded yet"
+        1 -> "1 article ready offline"
+        else -> "$count articles ready offline"
+    }
+    return if (state.offline.enabled) "$ready · keeping up to ${state.offline.keepCount}" else ready
 }
 
 private fun streakTitle(days: Int): String = when (days) {

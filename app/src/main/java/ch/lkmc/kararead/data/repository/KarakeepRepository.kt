@@ -121,6 +121,9 @@ class KarakeepRepository @Inject constructor(
 
     suspend fun setArchived(id: String, archived: Boolean) {
         api().updateBookmark(id, UpdateBookmarkRequest(archived = archived))
+        // Uncache on read: once an article is archived (done reading) it leaves
+        // the offline queue, so drop its cached copy to free space.
+        if (archived) runCatching { cacheDao.delete(id) }
     }
 
     suspend fun setFavourited(id: String, favourited: Boolean) {
@@ -226,4 +229,27 @@ class KarakeepRepository @Inject constructor(
     }
 
     suspend fun cachedCount(): Int = cacheDao.count()
+
+    /** Ids of articles currently available offline, for "downloaded" indicators. */
+    fun cachedIds(): Flow<Set<String>> = cacheDao.observeIds().map { it.toSet() }
+
+    /** First [limit] bookmarks of a source, without paging (for offline prefetch). */
+    private suspend fun firstPage(source: BookmarkSource, limit: Int): List<Bookmark> =
+        loadPage(source, order = "desc", cursor = null, limit = limit)
+            .bookmarks.map { it.toDomain(assetResolver) }
+
+    /**
+     * Keep the top [limit] unread articles of [source] downloaded for offline
+     * reading. Returns how many of that set are now cached. Eviction of read
+     * articles is handled eagerly by [setArchived]; this only fills the queue.
+     */
+    suspend fun syncOffline(source: BookmarkSource, limit: Int): Int {
+        val wanted = firstPage(source, limit)
+        var ready = 0
+        for (bm in wanted) {
+            val ok = runCatching { getArticle(bm.id) }.isSuccess
+            if (ok) ready++
+        }
+        return ready
+    }
 }

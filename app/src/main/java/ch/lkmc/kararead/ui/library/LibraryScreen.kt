@@ -44,6 +44,7 @@ fun LibraryScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
+    val cachedIds by viewModel.cachedIds.collectAsStateWithLifecycle()
     val items = viewModel.bookmarks.collectAsLazyPagingItems()
     val snackbarHost = remember { SnackbarHostState() }
     var sortMenuOpen by remember { mutableStateOf(false) }
@@ -112,6 +113,7 @@ fun LibraryScreen(
             BookmarkList(
                 items = items,
                 progressFor = { progress[it] ?: 0f },
+                isCached = { it in cachedIds },
                 onOpen = onOpenReader,
                 onArchive = viewModel::archive,
                 onFavourite = viewModel::favourite,

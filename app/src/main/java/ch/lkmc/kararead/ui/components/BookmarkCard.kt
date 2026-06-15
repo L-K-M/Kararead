@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ fun BookmarkCard(
     bookmark: Bookmark,
     progress: Float,
     modifier: Modifier = Modifier,
+    offline: Boolean = false,
     onClick: () -> Unit,
 ) {
     val isRead = progress >= 0.98f || bookmark.archived
@@ -100,7 +102,7 @@ fun BookmarkCard(
             }
 
             Spacer(Modifier.height(6.dp))
-            MetaLine(bookmark = bookmark, progress = progress, isRead = isRead)
+            MetaLine(bookmark = bookmark, progress = progress, isRead = isRead, offline = offline)
         }
 
         if (!bookmark.imageUrl.isNullOrBlank()) {
@@ -119,7 +121,7 @@ fun BookmarkCard(
 }
 
 @Composable
-private fun MetaLine(bookmark: Bookmark, progress: Float, isRead: Boolean) {
+private fun MetaLine(bookmark: Bookmark, progress: Float, isRead: Boolean, offline: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         val readingTime = bookmark.readingTimeMinutes
         val date = ch.lkmc.kararead.util.formatShortDate(bookmark.datePublished ?: bookmark.createdAt)
@@ -139,6 +141,15 @@ private fun MetaLine(bookmark: Bookmark, progress: Float, isRead: Boolean) {
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (offline) {
+            if (label.isNotEmpty()) Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.Filled.DownloadDone,
+                contentDescription = "Available offline",
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.primary,
             )
         }
     }
