@@ -57,11 +57,16 @@ class ReaderViewModel @Inject constructor(
     private var saveJob: Job? = null
     private var lastSaved = 0f
 
+    // True once the user has toggled read/favourite in this session, so a late
+    // live-state refresh never clobbers their optimistic change.
+    private var userChangedReadState = false
+
     init {
         load()
     }
 
     fun load(forceRefresh: Boolean = false) {
+        userChangedReadState = false
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             val initial = repository.getProgressOnce(bookmarkId)
@@ -76,6 +81,13 @@ class ReaderViewModel @Inject constructor(
                             initialProgress = initial,
                             progress = initial,
                         )
+                    }
+                    // The article may have come from the cache; reconcile the
+                    // read/favourite flags with the live server state when we can.
+                    repository.refreshReadState(bookmarkId)?.let { (archived, favourited) ->
+                        if (!userChangedReadState) {
+                            _state.update { it.copy(archived = archived, favourited = favourited) }
+                        }
                     }
                 }
                 .onFailure { e ->
@@ -99,6 +111,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun toggleFavourite() {
+        userChangedReadState = true
         val newValue = !_state.value.favourited
         _state.update { it.copy(favourited = newValue) }
         viewModelScope.launch {
@@ -109,6 +122,7 @@ class ReaderViewModel @Inject constructor(
 
     /** Mark as read/done (archive) or restore. */
     fun toggleArchived() {
+        userChangedReadState = true
         val newValue = !_state.value.archived
         _state.update { it.copy(archived = newValue) }
         viewModelScope.launch {

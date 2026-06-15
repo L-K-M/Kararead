@@ -27,5 +27,7 @@ data class CachedArticleEntity(
     val createdAt: Long,
     val datePublished: Long?,
     val readingTimeMinutes: Int?,
+    val archived: Boolean = false,
+    val favourited: Boolean = false,
     val cachedAt: Long,
 )

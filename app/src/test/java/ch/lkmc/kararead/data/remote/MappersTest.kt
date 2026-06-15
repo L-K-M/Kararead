@@ -64,6 +64,21 @@ class MappersTest {
     }
 
     @Test
+    fun `cache round-trip preserves read and favourite state`() {
+        val dto = BookmarkDto(
+            id = "5",
+            archived = true,
+            favourited = true,
+            content = ContentDto.Link(url = "https://x.test", htmlContent = "<p>Body</p>"),
+        )
+        val article = dto.toReaderArticle(resolver)
+        // Reading back from the cache must not lose archived/favourited.
+        val restored = article.toCacheEntity(now = 0L).toReaderArticle()
+        assertTrue(restored.bookmark.archived)
+        assertTrue(restored.bookmark.favourited)
+    }
+
+    @Test
     fun `toReaderArticle exposes html and plain text`() {
         val dto = BookmarkDto(
             id = "4",

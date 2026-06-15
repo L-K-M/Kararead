@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [ReadingProgressEntity::class, CachedArticleEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class KararreadDatabase : RoomDatabase() {
