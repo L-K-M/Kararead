@@ -36,6 +36,26 @@ class ReaderPager {
 /** A WebView that adds a "Highlight" item to the text-selection action menu. */
 private class HighlightWebView(context: Context) : WebView(context) {
     var onHighlightRequested: (() -> Unit)? = null
+    var onSingleTap: (() -> Unit)? = null
+
+    // A confirmed single tap (not a scroll, fling, double-tap or long-press)
+    // toggles the reading chrome. Native detection is far more reliable than a
+    // JS click listener, which the WebView's own gesture handling can swallow.
+    private val tapDetector = android.view.GestureDetector(
+        context,
+        object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                onSingleTap?.invoke()
+                return false
+            }
+        },
+    )
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        tapDetector.onTouchEvent(event)
+        return super.onTouchEvent(event)
+    }
 
     override fun startActionMode(callback: ActionMode.Callback): ActionMode =
         super.startActionMode(wrap(callback))
@@ -104,7 +124,6 @@ fun ReaderWebView(
         ReaderBridge(
             onProgress = onProgress,
             onScrollDirection = onScrollDirection,
-            onTap = onTap,
             onSelection = onSelection,
             onHighlightTap = onHighlightTap,
         )
@@ -114,6 +133,7 @@ fun ReaderWebView(
         modifier = modifier,
         factory = { ctx ->
             HighlightWebView(ctx).apply {
+                onSingleTap = onTap
                 onHighlightRequested = {
                     evaluateJavascript("window.krCaptureSelection && window.krCaptureSelection();", null)
                 }
@@ -196,7 +216,6 @@ private fun safeColor(hex: String): Int =
 internal class ReaderBridge(
     private val onProgress: (Float) -> Unit,
     private val onScrollDirection: (Boolean) -> Unit,
-    private val onTap: () -> Unit,
     private val onSelection: (text: String, start: Int, end: Int) -> Unit,
     private val onHighlightTap: (id: String) -> Unit,
 ) {
@@ -214,11 +233,6 @@ internal class ReaderBridge(
     @JavascriptInterface
     fun onReady() {
         mainHandler.post { onReady?.invoke() }
-    }
-
-    @JavascriptInterface
-    fun onTap() {
-        mainHandler.post { onTap() }
     }
 
     @JavascriptInterface

@@ -102,10 +102,19 @@ data class ReaderPreferences(
 
 enum class ReaderTheme { LIGHT, SEPIA, DARK, BLACK }
 
+/**
+ * Reader typeface options. The stacks lean on families Android's WebView ships
+ * (Noto Serif, Roboto + its condensed/casual variants, monospace) so each looks
+ * distinct without bundling font files.
+ */
 enum class ReaderFont(val cssStack: String) {
-    SERIF("Georgia, 'Times New Roman', serif"),
-    SANS("-apple-system, 'Roboto', 'Helvetica Neue', sans-serif"),
+    SERIF("Georgia, 'Noto Serif', 'Times New Roman', serif"),
+    SANS("'Roboto', 'Helvetica Neue', sans-serif"),
+    CONDENSED("'Roboto Condensed', 'sans-serif-condensed', sans-serif"),
+    SLAB("'Roboto Slab', 'Rockwell', Georgia, serif"),
+    HUMANIST("'Optima', 'Gill Sans', 'Segoe UI', sans-serif"),
     MONO("'JetBrains Mono', 'Courier New', monospace"),
+    CASUAL("'casual', 'Comic Sans MS', cursive"),
     SYSTEM("system-ui, sans-serif"),
 }
 
