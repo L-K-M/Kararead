@@ -3,6 +3,7 @@ package ch.lkmc.kararead.ui.reader
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.lkmc.kararead.data.model.Bookmark
 import ch.lkmc.kararead.data.model.Highlight
 import ch.lkmc.kararead.data.model.ReaderArticle
 import ch.lkmc.kararead.data.model.ReaderFont
@@ -68,6 +69,11 @@ class ReaderViewModel @Inject constructor(
 
     private val _highlights = MutableStateFlow<List<Highlight>>(emptyList())
     val highlights: StateFlow<List<Highlight>> = _highlights
+
+    // The next unread article we'd open from the end-of-article "Done · Next"
+    // button, fetched once on load so the button can name it.
+    private val _nextUp = MutableStateFlow<Bookmark?>(null)
+    val nextUp: StateFlow<Bookmark?> = _nextUp
 
     // Transient user-facing messages (e.g. highlight saved / failed).
     private val _messages = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.BUFFERED)
@@ -150,6 +156,10 @@ class ReaderViewModel @Inject constructor(
                     }
                     runCatching { repository.getHighlights(bookmarkId) }
                         .onSuccess { _highlights.value = it }
+                    launch {
+                        _nextUp.value =
+                            runCatching { repository.nextInboxBookmark(bookmarkId) }.getOrNull()
+                    }
                 }
                 .onFailure { e ->
                     _state.update {
@@ -240,6 +250,18 @@ class ReaderViewModel @Inject constructor(
                 .onFailure {
                     _messages.trySend("Couldn't save highlight — try again")
                 }
+        }
+    }
+
+    /** Set (or clear, with a blank string) the note attached to a highlight. */
+    fun updateHighlightNote(id: String, note: String) {
+        val trimmed = note.trim()
+        // Optimistic local update so the sheet reflects the change immediately.
+        _highlights.update { list -> list.map { if (it.id == id) it.copy(note = trimmed) else it } }
+        viewModelScope.launch {
+            runCatching { repository.updateHighlightNote(id, trimmed) }
+                .onSuccess { updated -> _highlights.update { l -> l.map { if (it.id == id) updated else it } } }
+                .onFailure { _messages.trySend("Couldn't save note — try again") }
         }
     }
 

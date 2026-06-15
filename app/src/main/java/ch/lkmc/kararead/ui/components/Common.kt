@@ -74,6 +74,20 @@ fun MessageState(
     }
 }
 
+/**
+ * A small palette of readable accent colours and a stable picker. Used to give
+ * cover-less cards a recognisable, colourful tile keyed off the article id, so
+ * the same article always gets the same colour. All are dark enough for white text.
+ */
+private val accentPalette = listOf(
+    Color(0xFF44546A), Color(0xFF0B6E4F), Color(0xFF8E4585), Color(0xFFB3261E),
+    Color(0xFF1565C0), Color(0xFFC1561E), Color(0xFF00695C), Color(0xFF5D4037),
+    Color(0xFF4527A0), Color(0xFF2E7D32),
+)
+
+fun accentColorFor(key: String): Color =
+    accentPalette[kotlin.math.abs(key.hashCode()) % accentPalette.size]
+
 /** A small circular progress ring (0f..1f) used on cards to show reading progress. */
 @Composable
 fun ProgressRing(

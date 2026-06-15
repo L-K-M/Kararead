@@ -21,6 +21,7 @@ import ch.lkmc.kararead.data.model.Tag
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.remote.KarakeepApi
 import ch.lkmc.kararead.data.remote.dto.UpdateBookmarkRequest
+import ch.lkmc.kararead.data.remote.dto.UpdateHighlightRequest
 import ch.lkmc.kararead.data.remote.toCacheEntity
 import ch.lkmc.kararead.data.remote.toDomain
 import ch.lkmc.kararead.data.remote.toReaderArticle
@@ -159,6 +160,28 @@ class KarakeepRepository @Inject constructor(
     suspend fun getHighlights(bookmarkId: String): List<Highlight> =
         api().getBookmarkHighlights(bookmarkId).highlights.map { it.toDomain() }
 
+    /** Every highlight across all bookmarks, newest first, paged in up to [max]. */
+    suspend fun getAllHighlights(max: Int = 1000): List<Highlight> {
+        val out = mutableListOf<Highlight>()
+        var cursor: String? = null
+        do {
+            val page = api().getAllHighlights(
+                limit = KarakeepApi.DEFAULT_PAGE_SIZE,
+                cursor = cursor,
+            )
+            out += page.highlights.map { it.toDomain() }
+            cursor = page.nextCursor
+        } while (cursor != null && out.size < max)
+        return out
+    }
+
+    /** Lightweight bookmark metadata (no body) — used to label highlights. */
+    suspend fun getBookmarkMeta(bookmarkId: String): Bookmark =
+        api().getBookmark(bookmarkId, includeContent = false).toDomain(assetResolver)
+
+    suspend fun updateHighlightNote(id: String, note: String): Highlight =
+        api().updateHighlight(id, UpdateHighlightRequest(note = note)).toDomain()
+
     suspend fun createHighlight(
         bookmarkId: String,
         startOffset: Int,
@@ -265,9 +288,13 @@ class KarakeepRepository @Inject constructor(
         runCatching { firstPage(source, limit) }.getOrNull()?.randomOrNull()?.id
 
     /** The next unread inbox article to read after [excludingId], if any. */
-    suspend fun nextInboxId(excludingId: String): String? =
+    suspend fun nextInboxBookmark(excludingId: String): Bookmark? =
         runCatching { firstPage(BookmarkSource.Inbox, 10) }.getOrNull()
-            ?.firstOrNull { it.id != excludingId }?.id
+            ?.firstOrNull { it.id != excludingId }
+
+    /** The next unread inbox article id to read after [excludingId], if any. */
+    suspend fun nextInboxId(excludingId: String): String? =
+        nextInboxBookmark(excludingId)?.id
 
     /**
      * Keep the top [limit] unread articles of [source] downloaded for offline

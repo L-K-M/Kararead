@@ -210,6 +210,17 @@ internal object CreateHighlightRequestSerializer :
         throw UnsupportedOperationException("CreateHighlightRequest is write-only")
 }
 
+/**
+ * Update a highlight's note (and/or colour). Only the fields present are changed;
+ * `explicitNulls = false` keeps unset fields out of the body. To clear a note,
+ * send an empty string rather than null.
+ */
+@Serializable
+data class UpdateHighlightRequest(
+    val note: String? = null,
+    val color: String? = null,
+)
+
 // --- User ---
 
 @Serializable

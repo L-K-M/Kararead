@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -38,17 +39,23 @@ import ch.lkmc.kararead.ui.components.MessageState
 @Composable
 fun ListsScreen(
     onOpenList: (id: String, name: String) -> Unit,
+    onOpenHighlights: () -> Unit,
     viewModel: ListsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Lists") }) }) { padding ->
-        PullToRefreshBox(
-            isRefreshing = state.loading && state.lists.isNotEmpty(),
-            onRefresh = viewModel::refresh,
-            modifier = Modifier.padding(padding).fillMaxSize(),
-        ) {
-            when {
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            HighlightsEntryRow(onClick = onOpenHighlights)
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            )
+            PullToRefreshBox(
+                isRefreshing = state.loading && state.lists.isNotEmpty(),
+                onRefresh = viewModel::refresh,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                when {
                 state.loading && state.lists.isEmpty() -> LoadingState()
                 state.error != null && state.lists.isEmpty() -> MessageState(
                     title = "Couldn't load lists",
@@ -111,7 +118,36 @@ fun ListsScreen(
                         )
                     }
                 }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun HighlightsEntryRow(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.FormatQuote,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Highlights", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Your saved highlights across all articles",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

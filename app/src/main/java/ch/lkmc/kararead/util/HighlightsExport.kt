@@ -31,3 +31,23 @@ fun highlightsToMarkdown(title: String, url: String?, highlights: List<Highlight
         }
     }
 }
+
+/** One article's worth of highlights, for combined export. */
+data class HighlightCollection(
+    val title: String,
+    val url: String?,
+    val highlights: List<Highlight>,
+)
+
+/**
+ * Render several articles' highlights into a single Markdown document, each
+ * article as its own section separated by a horizontal rule. Articles whose
+ * highlights are all note-less and text-less are skipped.
+ */
+fun highlightsToMarkdown(collections: List<HighlightCollection>): String =
+    collections
+        .map { highlightsToMarkdown(it.title, it.url, it.highlights).trimEnd() }
+        // Keep only sections that actually rendered a quote (skip title-only ones).
+        .filter { it.contains("> ") }
+        .joinToString("\n\n---\n\n")
+        .let { if (it.isEmpty()) it else it + "\n" }

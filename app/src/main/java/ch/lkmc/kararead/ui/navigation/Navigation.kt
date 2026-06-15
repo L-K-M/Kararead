@@ -27,6 +27,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import ch.lkmc.kararead.ui.highlights.HighlightsScreen
 import ch.lkmc.kararead.ui.library.LibraryScreen
 import ch.lkmc.kararead.ui.library.ListBookmarksScreen
 import ch.lkmc.kararead.ui.lists.ListsScreen
@@ -40,6 +41,7 @@ object Routes {
     const val ONBOARDING = "onboarding"
     const val LIBRARY = "library"
     const val LISTS = "lists"
+    const val HIGHLIGHTS = "highlights"
     const val STATS = "stats"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
@@ -116,6 +118,7 @@ fun KararreadNavHost(startDestination: String) {
                     onOpenList = { id, name ->
                         navController.navigate(Routes.listDetail(id, name))
                     },
+                    onOpenHighlights = { navController.navigate(Routes.HIGHLIGHTS) },
                 )
             }
             tabComposable(Routes.STATS, padding) {
@@ -131,6 +134,16 @@ fun KararreadNavHost(startDestination: String) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
+                )
+            }
+            composable(
+                route = Routes.HIGHLIGHTS,
+                enterTransition = { slideIn() },
+                exitTransition = { slideOut() },
+            ) {
+                HighlightsScreen(
+                    onOpenReader = { navController.navigate(Routes.reader(it)) },
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(

@@ -54,4 +54,31 @@ class HighlightsExportTest {
         val md = highlightsToMarkdown("T", null, listOf(hl(0, "   "), hl(5, null)))
         assertEquals("# T\n", md)
     }
+
+    @Test
+    fun `combines several articles into one document separated by rules`() {
+        val md = highlightsToMarkdown(
+            listOf(
+                HighlightCollection("First", "https://a.example", listOf(hl(0, "alpha"))),
+                HighlightCollection("Second", null, listOf(hl(0, "beta"))),
+            ),
+        )
+        assertTrue(md.contains("# First"))
+        assertTrue(md.contains("> alpha"))
+        assertTrue(md.contains("# Second"))
+        assertTrue(md.contains("> beta"))
+        assertTrue("sections are rule-separated", md.contains("\n---\n"))
+    }
+
+    @Test
+    fun `combining drops articles with no usable highlights`() {
+        val md = highlightsToMarkdown(
+            listOf(
+                HighlightCollection("Empty", null, listOf(hl(0, "  "))),
+                HighlightCollection("Real", null, listOf(hl(0, "kept"))),
+            ),
+        )
+        assertTrue(md.contains("# Real"))
+        assertTrue("no separator when only one section renders", !md.contains("---"))
+    }
 }

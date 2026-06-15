@@ -8,7 +8,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -42,6 +44,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -87,6 +90,7 @@ fun ReaderScreen(
     val ttsRate by viewModel.ttsRate.collectAsStateWithLifecycle()
     val highlights by viewModel.highlights.collectAsStateWithLifecycle()
     val highlightsJson by viewModel.highlightsJson.collectAsStateWithLifecycle()
+    val nextUp by viewModel.nextUp.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val view = LocalView.current
 
@@ -94,7 +98,7 @@ fun ReaderScreen(
     var showControls by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
     var showHighlights by remember { mutableStateOf(false) }
-    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    var pendingHighlightId by remember { mutableStateOf<String?>(null) }
     var showVoicePicker by remember { mutableStateOf(false) }
     val pager = remember { ReaderPager() }
 
@@ -232,7 +236,7 @@ fun ReaderScreen(
                     },
                     onTap = { chromeVisible = !chromeVisible },
                     onSelection = { text, start, end -> viewModel.addHighlight(text, start, end) },
-                    onHighlightTap = { id -> pendingDeleteId = id },
+                    onHighlightTap = { id -> pendingHighlightId = id },
                     highlightsJson = highlightsJson,
                     pager = pager,
                     modifier = Modifier.fillMaxSize(),
@@ -428,7 +432,20 @@ fun ReaderScreen(
             androidx.compose.material3.ExtendedFloatingActionButton(
                 onClick = { advance(true) },
                 icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
-                text = { Text("Done · Next") },
+                text = {
+                    Column {
+                        Text(if (nextUp != null) "Done · Next" else "Done")
+                        nextUp?.let {
+                            Text(
+                                it.displayTitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 220.dp),
+                            )
+                        }
+                    }
+                },
             )
         }
 
@@ -482,28 +499,71 @@ fun ReaderScreen(
         HighlightsSheet(
             highlights = highlights,
             onDismiss = { showHighlights = false },
+            onEdit = { id -> showHighlights = false; pendingHighlightId = id },
             onDelete = viewModel::removeHighlight,
         )
     }
 
-    pendingDeleteId?.let { id ->
+    pendingHighlightId?.let { id ->
         val hl = viewModel.highlight(id)
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { pendingDeleteId = null },
-            title = { Text("Remove highlight?") },
-            text = { hl?.text?.let { Text("“${it.take(140)}”") } },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    viewModel.removeHighlight(id); pendingDeleteId = null
-                }) { Text("Remove") }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { pendingDeleteId = null }) {
-                    Text("Cancel")
-                }
-            },
-        )
+        if (hl == null) {
+            pendingHighlightId = null
+        } else {
+            HighlightNoteDialog(
+                highlight = hl,
+                onDismiss = { pendingHighlightId = null },
+                onSaveNote = { note -> viewModel.updateHighlightNote(id, note) },
+                onDelete = { viewModel.removeHighlight(id); pendingHighlightId = null },
+            )
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HighlightNoteDialog(
+    highlight: ch.lkmc.kararead.data.model.Highlight,
+    onDismiss: () -> Unit,
+    onSaveNote: (String) -> Unit,
+    onDelete: () -> Unit,
+) {
+    var note by remember(highlight.id) { mutableStateOf(highlight.note.orEmpty()) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Highlight") },
+        text = {
+            Column {
+                highlight.text?.let {
+                    Text(
+                        "“${it.take(220)}”",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
+                }
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Note") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { onSaveNote(note); onDismiss() }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(
+                onClick = onDelete,
+                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) { Text("Delete") }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -511,6 +571,7 @@ fun ReaderScreen(
 private fun HighlightsSheet(
     highlights: List<ch.lkmc.kararead.data.model.Highlight>,
     onDismiss: () -> Unit,
+    onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
 ) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -524,14 +585,26 @@ private fun HighlightsSheet(
             androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
             highlights.forEach { hl ->
                 androidx.compose.foundation.layout.Row(
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onEdit(hl.id) }
+                        .padding(vertical = 8.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    Text(
-                        hl.text ?: "(highlight)",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            hl.text ?: "(highlight)",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        hl.note?.takeIf { it.isNotBlank() }?.let { note ->
+                            androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
+                            Text(
+                                note,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
                     IconButton(onClick = { onDelete(hl.id) }) {
                         Icon(Icons.Filled.Close, contentDescription = "Delete highlight")
                     }

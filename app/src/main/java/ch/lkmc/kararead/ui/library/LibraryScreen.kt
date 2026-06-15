@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -178,15 +179,19 @@ private fun RecentThumb(
     article: ch.lkmc.kararead.data.model.RecentArticle,
     onClick: () -> Unit,
 ) {
+    val hasCover = !article.imageUrl.isNullOrBlank()
+    // Cover-less articles get a stable colourful tile (keyed off the id) with the
+    // title inside, so they stay recognisable instead of being blank grey boxes.
+    val accent = remember(article.id) { ch.lkmc.kararead.ui.components.accentColorFor(article.id) }
     Box(
         Modifier
             .width(112.dp)
             .height(64.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(if (hasCover) MaterialTheme.colorScheme.surfaceVariant else accent)
             .clickable(onClick = onClick),
     ) {
-        if (!article.imageUrl.isNullOrBlank()) {
+        if (hasCover) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(article.imageUrl).crossfade(true).build(),
@@ -195,11 +200,11 @@ private fun RecentThumb(
                 modifier = Modifier.matchParentSize(),
             )
         } else {
-            // No cover: show the title so the card is still recognisable.
+            // No cover: show the title on the colourful tile.
             Text(
                 text = article.title,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color.White,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
