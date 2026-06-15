@@ -3,7 +3,7 @@
 
 <div align="center">
 
-# 📖 Kararead
+# Kararead
 
 **An Instapaper-style reader for your [Karakeep](https://karakeep.app) library.**
 
@@ -19,7 +19,7 @@
    <img src="./screenshots/reader.jpeg" alt="Kararead reader view" width="200">
 </a>
 
-**Latest release:** v<!-- version -->0.1.0<!-- /version --> · [Download](https://github.com/L-K-M/Lucerne/releases/latest)
+**Latest release:** v<!-- version -->0.1.0<!-- /version --> · [Download](https://github.com/L-K-M/Kararead/releases/latest)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
