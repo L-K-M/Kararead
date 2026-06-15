@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -29,6 +30,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -94,8 +96,19 @@ fun ReaderControlsSheet(
                     }
                 }
 
-                // Font family
-                SectionLabel("Typeface")
+                // Font family — with a "shuffle" dice to discover the bundled faces.
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SectionLabel("Typeface")
+                    TextButton(onClick = { onFont(randomReadingFont(prefs.font)) }) {
+                        Icon(Icons.Filled.Casino, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Shuffle")
+                    }
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ReaderFont.entries.forEach { font ->
                         FilterChip(
@@ -222,6 +235,15 @@ private fun themeLabel(theme: ReaderTheme) = when (theme) {
     ReaderTheme.SEPIA -> "Sepia"
     ReaderTheme.DARK -> "Dark"
     ReaderTheme.BLACK -> "Black"
+}
+
+/** A random bundled reading face (never the current one) for the shuffle dice. */
+private fun randomReadingFont(current: ReaderFont): ReaderFont {
+    val faces = listOf(
+        ReaderFont.LITERATA, ReaderFont.LORA, ReaderFont.SOURCE_SERIF, ReaderFont.NEWSREADER,
+        ReaderFont.CRIMSON, ReaderFont.BITTER, ReaderFont.INTER, ReaderFont.ATKINSON,
+    )
+    return (faces - current).randomOrNull() ?: faces.random()
 }
 
 private fun fontLabel(font: ReaderFont) = when (font) {
