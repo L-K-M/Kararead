@@ -11,6 +11,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.webkit.WebView.HitTestResult
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -58,6 +59,10 @@ private class HighlightWebView(context: Context) : WebView(context) {
         context,
         object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                // A tap that lands on a link (or other actionable target) should
+                // only follow that link — not also page or toggle the chrome.
+                // The WebView handles the link itself; we just bow out here.
+                if (isActionableTap()) return false
                 val w = width
                 val zone = when {
                     w <= 0 -> 0
@@ -70,6 +75,17 @@ private class HighlightWebView(context: Context) : WebView(context) {
             }
         },
     )
+
+    /** True when the last touch is over a link/email/phone/geo target. */
+    private fun isActionableTap(): Boolean = when (hitTestResult.type) {
+        HitTestResult.SRC_ANCHOR_TYPE,
+        HitTestResult.SRC_IMAGE_ANCHOR_TYPE,
+        HitTestResult.EMAIL_TYPE,
+        HitTestResult.PHONE_TYPE,
+        HitTestResult.GEO_TYPE,
+        -> true
+        else -> false
+    }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
