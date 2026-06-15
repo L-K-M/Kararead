@@ -222,6 +222,18 @@ class ReaderViewModel @Inject constructor(
 
     fun highlight(id: String): Highlight? = _highlights.value.firstOrNull { it.id == id }
 
+    /** Highlights as Markdown for export/sharing, or null if there are none. */
+    fun highlightsMarkdown(): String? {
+        val hs = _highlights.value
+        if (hs.none { !it.text.isNullOrBlank() }) return null
+        val bm = _state.value.article?.bookmark
+        return ch.lkmc.kararead.util.highlightsToMarkdown(
+            title = bm?.displayTitle ?: "Highlights",
+            url = bm?.url,
+            highlights = hs,
+        )
+    }
+
     // --- Text-to-speech ---
 
     /** Whether the current article has readable text to narrate. */

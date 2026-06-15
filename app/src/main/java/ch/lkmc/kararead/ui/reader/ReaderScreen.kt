@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -89,6 +91,18 @@ fun ReaderScreen(
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
     var showVoicePicker by remember { mutableStateOf(false) }
     val pager = remember { ReaderPager() }
+
+    // D5: a brief "resume" nudge so the silent scroll jump on reopen feels
+    // intentional. Shows only when reopening meaningfully mid-article.
+    val bookmarkKey = state.article?.bookmark?.id
+    var showResume by remember(bookmarkKey) { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(bookmarkKey, state.initialProgress) {
+        if (bookmarkKey != null && state.initialProgress in 0.05f..0.95f) {
+            showResume = true
+            kotlinx.coroutines.delay(3500)
+            showResume = false
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(prefs.keepScreenOn) {
         view.keepScreenOn = prefs.keepScreenOn
@@ -230,6 +244,18 @@ fun ReaderScreen(
                                     },
                                     onClick = { overflowOpen = false; showHighlights = true },
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Export highlights") },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.IosShare, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        overflowOpen = false
+                                        viewModel.highlightsMarkdown()?.let {
+                                            shareText(context, it, state.article?.bookmark?.displayTitle)
+                                        }
+                                    },
+                                )
                             }
                             DropdownMenuItem(
                                 text = { Text("Open original") },
@@ -256,6 +282,39 @@ fun ReaderScreen(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                 ),
             )
+        }
+
+        // D5: brief "resume" nudge, just below where the top bar sits.
+        AnimatedVisibility(
+            visible = showResume,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 72.dp),
+        ) {
+            val left = ch.lkmc.kararead.util.minutesLeft(
+                state.article?.bookmark?.readingTimeMinutes, state.initialProgress,
+            )
+            val label = when {
+                left == null -> "Resumed where you left off"
+                left <= 0 -> "Resumed · almost done"
+                else -> "Resumed · $left min left"
+            }
+            androidx.compose.material3.Surface(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                tonalElevation = 3.dp,
+                shadowElevation = 4.dp,
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
         }
 
         // Thin reading-progress line, pinned unobtrusively to the bottom.
@@ -507,9 +566,13 @@ private fun openUrl(context: android.content.Context, url: String) {
 }
 
 private fun shareUrl(context: android.content.Context, url: String, title: String?) {
+    shareText(context, url, title)
+}
+
+private fun shareText(context: android.content.Context, text: String, title: String?) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, url)
+        putExtra(Intent.EXTRA_TEXT, text)
         if (title != null) putExtra(Intent.EXTRA_SUBJECT, title)
     }
     runCatching { context.startActivity(Intent.createChooser(send, "Share")) }

@@ -83,6 +83,7 @@ fun LibraryScreen(
                     }
                 }
                 is LibraryEvent.Message -> snackbarHost.showSnackbar(event.text)
+                is LibraryEvent.Open -> onOpenReader(event.bookmarkId)
             }
         }
     }
@@ -145,6 +146,12 @@ fun LibraryScreen(
                 emptyTitle = emptyTitleFor(ui),
                 emptySubtitle = emptySubtitleFor(ui),
                 emptyEmoji = if (ui.tab == LibraryTab.INBOX || ui.tab == LibraryTab.READ_LATER) "✨" else "📭",
+                emptyActionLabel = "🎲 Surprise me".takeIf {
+                    ui.tab == LibraryTab.INBOX || ui.tab == LibraryTab.READ_LATER
+                },
+                onEmptyAction = viewModel::surpriseMe.takeIf {
+                    ui.tab == LibraryTab.INBOX || ui.tab == LibraryTab.READ_LATER
+                },
             )
         }
     }

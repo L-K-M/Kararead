@@ -50,6 +50,8 @@ fun BookmarkList(
     emptyTitle: String = "Nothing here yet",
     emptySubtitle: String? = null,
     emptyEmoji: String? = "✨",
+    emptyActionLabel: String? = null,
+    onEmptyAction: (() -> Unit)? = null,
 ) {
     val refreshing = items.loadState.refresh is LoadState.Loading
     val scope = rememberCoroutineScope()
@@ -72,7 +74,13 @@ fun BookmarkList(
             }
 
             !refreshing && items.itemCount == 0 -> {
-                MessageState(title = emptyTitle, subtitle = emptySubtitle, emoji = emptyEmoji)
+                MessageState(
+                    title = emptyTitle,
+                    subtitle = emptySubtitle,
+                    emoji = emptyEmoji,
+                    actionLabel = emptyActionLabel,
+                    onAction = onEmptyAction,
+                )
             }
 
             else -> {

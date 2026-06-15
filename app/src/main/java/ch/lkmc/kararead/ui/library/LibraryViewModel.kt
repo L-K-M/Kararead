@@ -37,6 +37,7 @@ data class LibraryUiState(
 sealed interface LibraryEvent {
     data class Archived(val bookmark: Bookmark) : LibraryEvent
     data class Message(val text: String) : LibraryEvent
+    data class Open(val bookmarkId: String) : LibraryEvent
 }
 
 @HiltViewModel
@@ -156,6 +157,22 @@ class LibraryViewModel @Inject constructor(
                     }
                 }
                 .onFailure { events.send(LibraryEvent.Message("Couldn't update — try again.")) }
+        }
+    }
+
+    /**
+     * For empty states: open a random article to read anyway — a favourite, or
+     * failing that something from the archive.
+     */
+    fun surpriseMe() {
+        viewModelScope.launch {
+            val id = repository.randomBookmarkId(BookmarkSource.Favourites)
+                ?: repository.randomBookmarkId(BookmarkSource.Archive)
+            if (id != null) {
+                events.send(LibraryEvent.Open(id))
+            } else {
+                events.send(LibraryEvent.Message("Nothing to surprise you with yet."))
+            }
         }
     }
 

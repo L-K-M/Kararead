@@ -260,6 +260,10 @@ class KarakeepRepository @Inject constructor(
         loadPage(source, order = "desc", cursor = null, limit = limit)
             .bookmarks.map { it.toDomain(assetResolver) }
 
+    /** A random bookmark id from the first page of [source], for "surprise me". */
+    suspend fun randomBookmarkId(source: BookmarkSource, limit: Int = 50): String? =
+        runCatching { firstPage(source, limit) }.getOrNull()?.randomOrNull()?.id
+
     /**
      * Keep the top [limit] unread articles of [source] downloaded for offline
      * reading. Returns how many of that set are now cached. Eviction of read
