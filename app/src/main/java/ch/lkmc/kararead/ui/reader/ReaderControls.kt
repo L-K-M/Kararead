@@ -59,6 +59,7 @@ fun ReaderControlsSheet(
     onPagedMode: (Boolean) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val fontFamilies = rememberReaderFontFamilies()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             Modifier
@@ -72,7 +73,7 @@ fun ReaderControlsSheet(
 
             // Live preview, so size/spacing/typeface/theme changes are visible
             // without leaving the sheet.
-            PreviewCard(prefs)
+            PreviewCard(prefs, fontFamilies)
 
             // Theme swatches
             SectionLabel("Theme")
@@ -93,7 +94,7 @@ fun ReaderControlsSheet(
                     FilterChip(
                         selected = prefs.font == font,
                         onClick = { onFont(font) },
-                        label = { Text(fontLabel(font), fontFamily = composeFamily(font)) },
+                        label = { Text(fontLabel(font), fontFamily = fontFamilies[font]) },
                     )
                 }
             }
@@ -228,16 +229,30 @@ private fun fontLabel(font: ReaderFont) = when (font) {
     ReaderFont.MONO -> "Mono"
 }
 
-/** Closest Compose family for chip/preview rendering (the reader itself uses the bundled font). */
-private fun composeFamily(font: ReaderFont): FontFamily = when (font) {
-    ReaderFont.LITERATA, ReaderFont.LORA, ReaderFont.SOURCE_SERIF,
-    ReaderFont.NEWSREADER, ReaderFont.CRIMSON, ReaderFont.BITTER -> FontFamily.Serif
-    ReaderFont.MONO -> FontFamily.Monospace
-    else -> FontFamily.SansSerif
+/** The actual bundled fonts, loaded from assets so chips/preview render in them. */
+@Composable
+private fun rememberReaderFontFamilies(): Map<ReaderFont, FontFamily> {
+    val assets = androidx.compose.ui.platform.LocalContext.current.assets
+    return androidx.compose.runtime.remember {
+        fun fam(file: String) =
+            FontFamily(androidx.compose.ui.text.font.Font(path = "fonts/$file", assetManager = assets))
+        mapOf(
+            ReaderFont.LITERATA to fam("Literata.ttf"),
+            ReaderFont.LORA to fam("Lora.ttf"),
+            ReaderFont.SOURCE_SERIF to fam("SourceSerif4.ttf"),
+            ReaderFont.NEWSREADER to fam("Newsreader.ttf"),
+            ReaderFont.CRIMSON to fam("CrimsonPro.ttf"),
+            ReaderFont.BITTER to fam("Bitter.ttf"),
+            ReaderFont.INTER to fam("Inter.ttf"),
+            ReaderFont.ATKINSON to fam("Atkinson-Regular.ttf"),
+            ReaderFont.MONO to FontFamily.Monospace,
+            ReaderFont.SYSTEM to FontFamily.Default,
+        )
+    }
 }
 
 @Composable
-private fun PreviewCard(prefs: ReaderPreferences) {
+private fun PreviewCard(prefs: ReaderPreferences, fontFamilies: Map<ReaderFont, FontFamily>) {
     val palette = ReaderHtmlBuilder.paletteFor(prefs.theme)
     fun parse(hex: String, fallback: Color) =
         runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(fallback)
@@ -246,7 +261,7 @@ private fun PreviewCard(prefs: ReaderPreferences) {
     val secondary = parse(palette.secondary, fg)
     // Mirror the reader CSS: 19px base, scaled, with the unitless line-height.
     val bodySize = (19f * prefs.fontScale).sp
-    val family = composeFamily(prefs.font)
+    val family = fontFamilies[prefs.font] ?: FontFamily.Default
 
     androidx.compose.material3.Surface(
         shape = RoundedCornerShape(12.dp),

@@ -209,8 +209,16 @@ body {
   margin: 0;
   font-family: -apple-system, 'Roboto', sans-serif;
 }
-.kr-article { text-align: var(--kr-align); }
-.kr-article p { margin: 0 0 1.1em 0; -webkit-hyphens: auto; hyphens: auto; }
+.kr-article {
+  text-align: var(--kr-align);
+  -webkit-hyphens: auto; hyphens: auto;
+  -webkit-hyphenate-limit-before: 3; -webkit-hyphenate-limit-after: 3;
+  hyphenate-limit-chars: 6 3 3;
+}
+/* Don't hyphenate code/headings. */
+.kr-article pre, .kr-article code, .kr-article h1, .kr-article h2,
+.kr-article h3, .kr-article h4 { -webkit-hyphens: none; hyphens: none; }
+.kr-article p { margin: 0 0 1.1em 0; }
 .kr-article a { color: var(--kr-link); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--kr-link) 35%, transparent); }
 .kr-article h1, .kr-article h2, .kr-article h3, .kr-article h4 {
   line-height: 1.3; margin: 1.6em 0 .5em 0; font-weight: 700; text-align: start;
@@ -248,26 +256,20 @@ body {
 .kr-footer { color: var(--kr-secondary); text-align: center; margin-top: 3em; font-size: .8em; letter-spacing: .15em; }
 ::selection { background: color-mix(in srgb, var(--kr-link) 30%, transparent); }
 
-/* Paged reading mode: flow the article into full-screen columns and slide
-   horizontally. column-width + gap are chosen so the page stride is exactly
-   100vw and every page keeps equal side margins. */
+/* Paged reading mode: lock the viewport and move the article up by whole
+   screenfuls (translateY). Robust across arbitrary article markup — content
+   always renders; pages just advance one screen at a time. */
 .kr-page-counter {
-  position: fixed; left: 0; right: 0; bottom: 6px; text-align: center;
+  position: fixed; left: 0; right: 0; bottom: 4px; text-align: center;
   font-size: 12px; color: var(--kr-secondary); pointer-events: none;
   font-family: -apple-system, 'Roboto', sans-serif;
 }
 body.kr-paged { overflow: hidden; height: 100vh; }
 body.kr-paged #kr-content {
-  height: 100vh; max-width: none; margin: 0;
-  column-width: calc(100vw - 2 * var(--kr-margin));
-  column-gap: calc(2 * var(--kr-margin));
-  column-fill: auto;
-  padding: 28px var(--kr-margin) 52px var(--kr-margin);
-  transform: translateX(var(--kr-page-x, 0px));
-  transition: transform .25s ease;
+  transform: translateY(var(--kr-page-y, 0px));
+  transition: transform .2s ease;
+  padding-bottom: 24px;
 }
-body.kr-paged #kr-content img, body.kr-paged #kr-content video { max-height: calc(100vh - 130px); width: auto; }
-body.kr-paged #kr-content pre, body.kr-paged #kr-content table { max-height: calc(100vh - 130px); }
 body.kr-paged .kr-footer { display: none; }
     """.trimIndent()
 
@@ -335,21 +337,17 @@ body.kr-paged .kr-footer { display: none; }
     });
   }, { passive: true });
 
-  // --- Paged reading mode (full-screen columns, swipe/volume to turn) ---
+  // --- Paged reading mode (vertical screenfuls; swipe/tap/volume to turn) ---
   var krPaged = false, krPage = 0, krPages = 1;
-  function krMarginPx(){
-    var v = getComputedStyle(document.documentElement).getPropertyValue('--kr-margin');
-    var n = parseFloat(v); return isNaN(n) ? 20 : n;
-  }
+  function krPageH(){ return window.innerHeight; }
   function krMeasurePages(){
     var c = document.getElementById('kr-content'); if (!c) return;
-    var gap = 2 * krMarginPx();
-    krPages = Math.max(1, Math.round((c.scrollWidth + gap) / window.innerWidth));
+    krPages = Math.max(1, Math.ceil(c.scrollHeight / krPageH()));
     krPage = Math.min(krPages - 1, Math.max(0, krPage));
   }
   function krRenderPage(){
     var c = document.getElementById('kr-content'); if (!c) return;
-    c.style.setProperty('--kr-page-x', (-krPage * window.innerWidth) + 'px');
+    c.style.setProperty('--kr-page-y', (-krPage * krPageH()) + 'px');
     var el = document.getElementById('kr-page-counter');
     if (el) el.textContent = (krPage + 1) + ' / ' + krPages;
     krLastFraction = krPages > 1 ? krPage / (krPages - 1) : 1;
@@ -382,19 +380,22 @@ body.kr-paged .kr-footer { display: none; }
       }
       document.body.classList.add('kr-paged');
       var startFrac = krLastFraction || 0;
-      setTimeout(function(){
+      var place = function(){
         krMeasurePages();
         krPage = Math.round(startFrac * (krPages - 1));
         krRenderPage();
-      }, 60);
+      };
+      setTimeout(place, 60);
+      // Re-measure once web fonts settle (they change the content height).
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ if (krPaged) place(); });
     } else {
       document.body.classList.remove('kr-paged');
-      var c = document.getElementById('kr-content'); if (c) c.style.removeProperty('--kr-page-x');
+      var c = document.getElementById('kr-content'); if (c) c.style.removeProperty('--kr-page-y');
       var doc = document.documentElement;
       window.scrollTo(0, (doc.scrollHeight - doc.clientHeight) * (krLastFraction || 0));
     }
   };
-  // Swipe to turn pages (paged mode only). Doesn't disturb the native tap.
+  // Swipe up/down to turn pages (paged mode only). Doesn't disturb the native tap.
   var krTX = 0, krTY = 0, krSwiping = false;
   window.addEventListener('touchstart', function(e){
     if (!krPaged || !e.touches.length) return;
@@ -404,7 +405,7 @@ body.kr-paged .kr-footer { display: none; }
     if (!krPaged || !krSwiping) return; krSwiping = false;
     var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
     var dx = t.clientX - krTX, dy = t.clientY - krTY;
-    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.4) krGoToPage(krPage + (dx < 0 ? 1 : -1));
+    if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx) * 1.2) krGoToPage(krPage + (dy < 0 ? 1 : -1));
   }, { passive: true });
   window.addEventListener('resize', function(){ if (krPaged){ krMeasurePages(); krRenderPage(); } });
   (function(){
