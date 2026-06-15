@@ -37,3 +37,17 @@ val md_dark_surfaceVariant = Color(0xFF51453A)
 val md_dark_onSurface = Color(0xFFEBE1D9)
 val md_dark_onSurfaceVariant = Color(0xFFD5C3B5)
 val md_dark_outline = Color(0xFF9D8D81)
+
+/** Accent presets offered when dynamic color is off. First entry is the default. */
+val AccentPresets: List<Color> = listOf(
+    Color(0xFF7A5C3E), // Espresso (default)
+    Color(0xFFB5651D), // Terracotta
+    Color(0xFF3E6B4F), // Forest
+    Color(0xFF1F6FB2), // Ocean
+    Color(0xFF7B4B8A), // Plum
+    Color(0xFFB23A48), // Crimson
+    Color(0xFF1C7C74), // Teal
+    Color(0xFF4E5A6B), // Slate
+)
+
+val DefaultAccent = AccentPresets.first()

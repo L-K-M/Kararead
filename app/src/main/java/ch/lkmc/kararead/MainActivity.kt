@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,6 +32,7 @@ data class RootUiState(
     val isConnected: Boolean = false,
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
+    val accentColor: Int = 0,
 )
 
 @dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,13 +48,15 @@ class RootViewModel @Inject constructor(
             settings.connection,
             settings.appThemeMode,
             settings.dynamicColor,
+            settings.accentColor,
             ready,
-        ) { conn, theme, dynamic, isReady ->
+        ) { conn, theme, dynamic, accent, isReady ->
             RootUiState(
                 loading = !isReady,
                 isConnected = conn.isComplete,
                 themeMode = theme,
                 dynamicColor = dynamic,
+                accentColor = accent,
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, RootUiState())
 
@@ -114,7 +118,16 @@ class MainActivity : ComponentActivity(), VolumeKeyController {
 
         setContent {
             val state by rootViewModel.state.collectAsStateWithLifecycle()
-            KararreadTheme(themeMode = state.themeMode, dynamicColor = state.dynamicColor) {
+            val accent = if (state.accentColor != 0) {
+                state.accentColor
+            } else {
+                ch.lkmc.kararead.ui.theme.DefaultAccent.toArgb()
+            }
+            KararreadTheme(
+                themeMode = state.themeMode,
+                dynamicColor = state.dynamicColor,
+                accentColor = accent,
+            ) {
                 if (!state.loading) {
                     val start = if (state.isConnected) Routes.LIBRARY else Routes.ONBOARDING
                     KararreadNavHost(startDestination = start)

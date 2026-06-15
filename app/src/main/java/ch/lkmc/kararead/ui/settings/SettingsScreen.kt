@@ -1,16 +1,25 @@
 package ch.lkmc.kararead.ui.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -22,12 +31,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.lkmc.kararead.data.model.AppThemeMode
+import ch.lkmc.kararead.ui.theme.AccentPresets
+import ch.lkmc.kararead.ui.theme.DefaultAccent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,6 +106,12 @@ fun SettingsScreen(
                 checked = state.dynamicColor,
                 onChange = viewModel::setDynamicColor,
             )
+            if (!state.dynamicColor) {
+                AccentPicker(
+                    selected = state.accentColor,
+                    onPick = viewModel::setAccentColor,
+                )
+            }
 
             HorizontalDivider()
             SectionHeader("Offline reading")
@@ -148,6 +169,47 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Sign out")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccentPicker(selected: Int, onPick: (Int) -> Unit) {
+    val effective = if (selected != 0) selected else DefaultAccent.toArgb()
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("Accent color", style = MaterialTheme.typography.titleMedium)
+        Row(
+            Modifier
+                .padding(top = 10.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AccentPresets.forEach { color ->
+                val isSelected = color.toArgb() == effective
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                        .border(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.outlineVariant,
+                            shape = CircleShape,
+                        )
+                        .clickable { onPick(color.toArgb()) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = "Selected",
+                            tint = if (color.luminance() > 0.5f) Color.Black else Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }
