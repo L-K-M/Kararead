@@ -45,6 +45,11 @@ private class HighlightWebView(context: Context) : WebView(context) {
     /** Confirmed single tap by horizontal zone: -1 left, 0 centre, +1 right. */
     var onTapZone: ((Int) -> Unit)? = null
 
+    // Some OEM selection toolbars (notably Huawei's HwFloatingToolbar) re-invoke
+    // the action callback in a tight loop; this debounces so one tap captures the
+    // selection once.
+    private var lastHighlightAt = 0L
+
     // A confirmed single tap (not a scroll, fling, double-tap or long-press).
     // Left/right thirds page; the centre toggles the reading chrome. Native
     // detection is far more reliable than a JS click listener, which the
@@ -90,9 +95,13 @@ private class HighlightWebView(context: Context) : WebView(context) {
             inner.onPrepareActionMode(mode, menu)
 
         override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-            android.util.Log.d("KrHighlight", "onActionItemClicked: id=${item.itemId} (ours=$HIGHLIGHT_ITEM_ID)")
             if (item.itemId == HIGHLIGHT_ITEM_ID) {
-                onHighlightRequested?.invoke()
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - lastHighlightAt > 700) {
+                    lastHighlightAt = now
+                    android.util.Log.d("KrHighlight", "onActionItemClicked: Highlight -> capture")
+                    onHighlightRequested?.invoke()
+                }
                 mode.finish()
                 return true
             }

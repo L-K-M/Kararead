@@ -89,14 +89,12 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
-    fun `highlight rendering is deferred while a selection is active`() {
-        // Re-wrapping the article's text nodes mid-selection collapses/jumps the
-        // reader's selection, so the renderer must bail out (and remember to
-        // replay) when a live selection exists.
+    fun `selection capture reports a selection at most once`() {
+        // Some OEM selection toolbars re-invoke the action in a loop; the capture
+        // must report a given selection only once (guarded by krReported).
         val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
-        assertTrue(out.contains("krApplyHighlights"))
-        assertTrue(out.contains("krLiveSelection"))
-        assertTrue(out.contains("krPendingApply"))
+        assertTrue(out.contains("krCaptureSelection"))
+        assertTrue(out.contains("krReported"))
     }
 
     @Test

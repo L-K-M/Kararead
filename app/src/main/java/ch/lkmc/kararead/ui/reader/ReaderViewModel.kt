@@ -218,6 +218,11 @@ class ReaderViewModel @Inject constructor(
 
     // --- Highlights ---
 
+    // Guards against the same selection being reported more than once (some OEM
+    // selection toolbars re-invoke the action): at most one highlight per range.
+    private var lastHighlightSig: String? = null
+    private var lastHighlightAt = 0L
+
     /** Create a highlight from a captured text selection. */
     fun addHighlight(text: String, start: Int, end: Int) {
         android.util.Log.d("KrHighlight", "addHighlight start=$start end=$end len=${text.length} bookmark=$bookmarkId")
@@ -225,6 +230,14 @@ class ReaderViewModel @Inject constructor(
             android.util.Log.w("KrHighlight", "addHighlight ignored: end<=start")
             return
         }
+        val sig = "$start:$end"
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (sig == lastHighlightSig && now - lastHighlightAt < 3000) {
+            android.util.Log.d("KrHighlight", "addHighlight ignored: duplicate $sig")
+            return
+        }
+        lastHighlightSig = sig
+        lastHighlightAt = now
         viewModelScope.launch {
             runCatching { repository.createHighlight(bookmarkId, start, end, text.trim()) }
                 .onSuccess { created ->

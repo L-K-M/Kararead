@@ -463,35 +463,32 @@ body {
   // keep a clone to fall back on. Offsets are computed lazily, at capture time,
   // so dragging the selection handles stays cheap on long articles.
   var krLastRange = null, krLastText = '';
-  // A highlight render requested while a selection was active; replayed once the
-  // selection clears so we never rewrite the DOM out from under the reader.
-  var krPendingApply = null;
+  // True once the current selection has been reported, so a misbehaving OEM
+  // selection toolbar that re-invokes the action can't report it again and again.
+  var krReported = false;
   document.addEventListener('selectionchange', function(){
     var live = krLiveSelection();
     if (live){
       krLastRange = live.range.cloneRange();
       krLastText = live.text;
-      return;
-    }
-    if (krPendingApply !== null){
-      var pending = krPendingApply; krPendingApply = null;
-      window.krApplyHighlights(pending);
+      krReported = false;
     }
   });
   // Called from the native "Highlight" selection action.
   window.krCaptureSelection = function(){
+    if (krReported) return 'dup';
     var live = krLiveSelection();
     var cap = (live && krCaptureRange(live.range, live.text)) ||
               krCaptureRange(krLastRange, krLastText);
-    console.log('krCaptureSelection live=' + (!!live) + ' lastRange=' + (!!krLastRange) +
-                ' bridge=' + (!!(window.AndroidReader && AndroidReader.onSelection)) +
-                ' cap=' + (cap ? (cap.start + '..' + cap.end + ' "' + cap.text.slice(0, 30) + '"') : 'null'));
+    console.log('krCaptureSelection cap=' + (cap ? (cap.start + '..' + cap.end) : 'null'));
     if (cap){
+      krReported = true;
       try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(cap.text, cap.start, cap.end); }
       catch(e){ console.log('onSelection threw ' + e); }
     }
     krLastRange = null; krLastText = '';
-    var sel = window.getSelection(); if (sel) sel.removeAllRanges();
+    var sel = window.getSelection();
+    if (sel){ try { sel.removeAllRanges(); } catch(e){} }
     return cap ? 'ok' : 'nocap';
   };
   function krUnwrap(root){
@@ -524,11 +521,6 @@ body {
   }
   window.krApplyHighlights = function(jsonStr){
     var root = krRoot(); if (!root) return;
-    // Rewriting the article's text nodes collapses or jumps any selection the
-    // reader is making, so defer the render until the selection clears (the
-    // selectionchange listener above replays it then).
-    if (krLiveSelection()){ krPendingApply = jsonStr; return; }
-    krPendingApply = null;
     krUnwrap(root);
     var list; try { list = JSON.parse(jsonStr); } catch(e){ return; }
     list.sort(function(a, b){ return b.start - a.start; });
