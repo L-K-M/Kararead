@@ -152,7 +152,16 @@ fun KararreadNavHost(startDestination: String) {
                 enterTransition = { slideIn() },
                 exitTransition = { slideOut() },
             ) {
-                ReaderScreen(onBack = { navController.popBackStack() })
+                ReaderScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenReader = { id ->
+                        // Replace the current reader so Back returns to the list
+                        // rather than walking through every article read.
+                        navController.navigate(Routes.reader(id)) {
+                            popUpTo(Routes.READER) { inclusive = true }
+                        }
+                    },
+                )
             }
         }
     }

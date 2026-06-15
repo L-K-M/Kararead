@@ -264,6 +264,11 @@ class KarakeepRepository @Inject constructor(
     suspend fun randomBookmarkId(source: BookmarkSource, limit: Int = 50): String? =
         runCatching { firstPage(source, limit) }.getOrNull()?.randomOrNull()?.id
 
+    /** The next unread inbox article to read after [excludingId], if any. */
+    suspend fun nextInboxId(excludingId: String): String? =
+        runCatching { firstPage(BookmarkSource.Inbox, 10) }.getOrNull()
+            ?.firstOrNull { it.id != excludingId }?.id
+
     /**
      * Keep the top [limit] unread articles of [source] downloaded for offline
      * reading. Returns how many of that set are now cached. Eviction of read

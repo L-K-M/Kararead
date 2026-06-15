@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -48,7 +49,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -72,8 +75,10 @@ private const val READING_TICK_SECONDS = 15L
 @Composable
 fun ReaderScreen(
     onBack: () -> Unit,
+    onOpenReader: (String) -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
+    val scope = rememberCoroutineScope()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs by viewModel.readerPrefs.collectAsStateWithLifecycle()
     val speech by viewModel.speech.collectAsStateWithLifecycle()
@@ -91,6 +96,20 @@ fun ReaderScreen(
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
     var showVoicePicker by remember { mutableStateOf(false) }
     val pager = remember { ReaderPager() }
+
+    // B5: advance to the next unread article (optionally marking this one read).
+    val advance: (Boolean) -> Unit = { archiveFirst ->
+        scope.launch {
+            val next = viewModel.nextArticle(archiveFirst)
+            if (next != null) {
+                onOpenReader(next)
+            } else {
+                android.widget.Toast.makeText(
+                    context, "You're all caught up ✨", android.widget.Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
 
     // D5: a brief "resume" nudge so the silent scroll jump on reopen feels
     // intentional. Shows only when reopening meaningfully mid-article.
@@ -272,6 +291,10 @@ fun ReaderScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("Next in queue →") },
+                                onClick = { overflowOpen = false; advance(false) },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Refresh") },
                                 onClick = { overflowOpen = false; viewModel.load(forceRefresh = true) },
                             )
@@ -330,6 +353,23 @@ fun ReaderScreen(
                 trackColor = Color.Transparent,
                 gapSize = 0.dp,
                 drawStopIndicator = {},
+            )
+        }
+
+        // B5: when you reach the end, a gentle "finish & continue" affordance.
+        AnimatedVisibility(
+            visible = state.article != null && !state.archived && !speech.active && state.progress >= 0.92f,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(16.dp),
+        ) {
+            androidx.compose.material3.ExtendedFloatingActionButton(
+                onClick = { advance(true) },
+                icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
+                text = { Text("Done · Next") },
             )
         }
 

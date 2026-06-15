@@ -249,6 +249,22 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { settings.setTtsVoice(id) }
     }
 
+    // --- Next in queue (auto-advance) ---
+
+    /**
+     * Find the next unread article to read. When [archiveFirst] is set, the
+     * current article is marked read (archived) first — the "finish & continue"
+     * flow. Returns the next bookmark id, or null if the inbox is empty.
+     */
+    suspend fun nextArticle(archiveFirst: Boolean): String? {
+        if (bookmarkId.isEmpty()) return null
+        if (archiveFirst && !_state.value.archived) {
+            userChangedReadState = true
+            runCatching { repository.setArchived(bookmarkId, true) }
+        }
+        return runCatching { repository.nextInboxId(bookmarkId) }.getOrNull()
+    }
+
     override fun onCleared() {
         speaker.shutdown()
         // Flush the last scroll position even though viewModelScope is being
