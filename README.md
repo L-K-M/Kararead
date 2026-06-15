@@ -19,6 +19,8 @@
    <img src="./screenshots/reader.jpeg" alt="Kararead reader view" width="200">
 </a>
 
+**Latest release:** v<!-- version -->0.4.0<!-- /version --> · [Download](https://github.com/L-K-M/Lucerne/releases/latest)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
