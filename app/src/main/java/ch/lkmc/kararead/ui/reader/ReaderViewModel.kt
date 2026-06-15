@@ -36,6 +36,7 @@ data class ReaderUiState(
     val favourited: Boolean = false,
     val archived: Boolean = false,
     val initialProgress: Float = 0f,
+    val initialAnchor: String? = null,
     val progress: Float = 0f,
     val offline: Boolean = false,
 )
@@ -115,8 +116,9 @@ class ReaderViewModel @Inject constructor(
                             article = article,
                             favourited = article.bookmark.favourited,
                             archived = article.bookmark.archived,
-                            initialProgress = initial,
-                            progress = initial,
+                            initialProgress = initial?.fraction ?: 0f,
+                            initialAnchor = initial?.anchor,
+                            progress = initial?.fraction ?: 0f,
                         )
                     }
                     // The article may have come from the cache; reconcile the
@@ -138,14 +140,14 @@ class ReaderViewModel @Inject constructor(
     }
 
     /** Called frequently from the WebView scroll bridge; persists with debounce. */
-    fun onProgress(fraction: Float) {
+    fun onProgress(fraction: Float, anchor: String) {
         _state.update { it.copy(progress = fraction) }
         if (kotlin.math.abs(fraction - lastSaved) < 0.01f) return
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
             delay(400)
             lastSaved = fraction
-            repository.saveProgress(bookmarkId, fraction)
+            repository.saveProgress(bookmarkId, fraction, anchor.takeIf { it.isNotEmpty() })
         }
     }
 

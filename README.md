@@ -132,8 +132,7 @@ scroll progress, and a `WebViewClient` that injects the bearer token for
 server-hosted images.
 
 See [`PLAN.md`](PLAN.md) for the full design rationale and the Karakeep API
-reference, and [`IMPROVEMENTS.md`](IMPROVEMENTS.md) / [`awesome.md`](awesome.md)
-for the post-build reviews and roadmap.
+reference, and [`awesome.md`](awesome.md) for the post-build review and roadmap.
 
 ## CI/CD
 

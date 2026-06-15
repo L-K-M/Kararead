@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ReadingProgressEntity::class, CachedArticleEntity::class, ReadingDayEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class KararreadDatabase : RoomDatabase() {
@@ -27,6 +27,13 @@ abstract class KararreadDatabase : RoomDatabase() {
                         "seconds INTEGER NOT NULL, " +
                         "updatedAt INTEGER NOT NULL)",
                 )
+            }
+        }
+
+        /** v3 → v4: add the nullable reading_progress.anchor column. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reading_progress ADD COLUMN anchor TEXT")
             }
         }
     }

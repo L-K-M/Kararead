@@ -198,19 +198,23 @@ class KarakeepRepository @Inject constructor(
     // --- Reading progress ---
 
     fun progress(id: String): Flow<ReadingProgress?> =
-        progressDao.observe(id).map { it?.let { e -> ReadingProgress(e.bookmarkId, e.fraction, e.updatedAt) } }
+        progressDao.observe(id).map { it?.toDomain() }
 
     fun allProgress(): Flow<Map<String, Float>> =
         progressDao.observeAll().map { list -> list.associate { it.bookmarkId to it.fraction } }
 
-    suspend fun getProgressOnce(id: String): Float =
-        progressDao.get(id)?.fraction ?: 0f
+    /** The saved progress (fraction + block anchor) for restore, or null. */
+    suspend fun getProgressOnce(id: String): ReadingProgress? =
+        progressDao.get(id)?.toDomain()
 
-    suspend fun saveProgress(id: String, fraction: Float) {
+    suspend fun saveProgress(id: String, fraction: Float, anchor: String? = null) {
         progressDao.upsert(
-            ReadingProgressEntity(id, fraction.coerceIn(0f, 1f), System.currentTimeMillis()),
+            ReadingProgressEntity(id, fraction.coerceIn(0f, 1f), System.currentTimeMillis(), anchor),
         )
     }
+
+    private fun ReadingProgressEntity.toDomain() =
+        ReadingProgress(bookmarkId, fraction, updatedAt, anchor)
 
     // --- Reading stats (streaks / minutes) ---
 

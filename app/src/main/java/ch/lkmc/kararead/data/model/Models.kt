@@ -138,6 +138,7 @@ data class ReadingProgress(
     val bookmarkId: String,
     val fraction: Float,   // 0f .. 1f scroll position
     val updatedAt: Long,
+    val anchor: String? = null,   // block anchor for accurate restore
 )
 
 /** A recently-opened article, for the library's quick "jump back in" strip. */

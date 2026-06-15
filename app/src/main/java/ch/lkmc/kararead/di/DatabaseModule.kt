@@ -21,7 +21,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): KararreadDatabase =
         Room.databaseBuilder(context, KararreadDatabase::class.java, KararreadDatabase.NAME)
-            .addMigrations(KararreadDatabase.MIGRATION_2_3)
+            .addMigrations(KararreadDatabase.MIGRATION_2_3, KararreadDatabase.MIGRATION_3_4)
             .fallbackToDestructiveMigration()
             .build()
 

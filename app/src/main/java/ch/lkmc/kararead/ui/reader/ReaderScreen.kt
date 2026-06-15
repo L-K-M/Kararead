@@ -134,6 +134,7 @@ fun ReaderScreen(
                     prefs = prefs,
                     baseUrl = viewModel.serverOrigin,
                     initialProgress = state.initialProgress,
+                    initialAnchor = state.initialAnchor,
                     assetLoader = viewModel.assetLoader,
                     onProgress = viewModel::onProgress,
                     onScrollDirection = { up -> chromeVisible = up || state.progress < 0.05f },

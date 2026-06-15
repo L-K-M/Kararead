@@ -230,6 +230,43 @@ body {
     if (scrollable <= 0) return 1.0;
     return Math.min(1, Math.max(0, doc.scrollTop / scrollable));
   }
+  function krScrollTop(){ return (document.scrollingElement || document.documentElement).scrollTop; }
+  // The set of block elements we anchor reading position to. Anchoring to a
+  // specific block (rather than a raw scroll fraction) keeps the restored
+  // position stable when late-loading images/fonts shift the layout.
+  function krBlocks(){
+    return document.querySelectorAll(
+      '#kr-content h1,#kr-content h2,#kr-content h3,#kr-content h4,' +
+      '#kr-content p,#kr-content li,#kr-content blockquote,#kr-content pre,' +
+      '#kr-content figure,#kr-content img,#kr-content table');
+  }
+  // "<blockIndex>:<fractionWithinBlock>" for the block at the top of the viewport.
+  function krComputeAnchor(){
+    var blocks = krBlocks(); if (!blocks.length) return '';
+    var viewTop = krScrollTop();
+    var idx = 0;
+    for (var i = 0; i < blocks.length; i++){
+      var top = blocks[i].getBoundingClientRect().top + viewTop;
+      if (top <= viewTop + 1) idx = i; else break;
+    }
+    var rect = blocks[idx].getBoundingClientRect();
+    var elTop = rect.top + viewTop;
+    var h = rect.height || 1;
+    var frac = Math.min(1, Math.max(0, (viewTop - elTop) / h));
+    return idx + ':' + frac.toFixed(4);
+  }
+  function krScrollToAnchor(anchor){
+    if (!anchor) return false;
+    var parts = anchor.split(':');
+    var idx = parseInt(parts[0], 10);
+    var frac = parseFloat(parts[1]); if (isNaN(frac)) frac = 0;
+    var blocks = krBlocks(); if (!blocks.length || isNaN(idx)) return false;
+    if (idx < 0) idx = 0; if (idx >= blocks.length) idx = blocks.length - 1;
+    var rect = blocks[idx].getBoundingClientRect();
+    var elTop = rect.top + krScrollTop();
+    window.scrollTo(0, Math.max(0, elTop + frac * (rect.height || 0)));
+    return true;
+  }
   var ticking = false;
   var lastY = 0;
   window.addEventListener('scroll', function(){
@@ -239,17 +276,52 @@ body {
       var y = document.documentElement.scrollTop;
       var up = y < lastY - 2;
       lastY = y;
-      try { if (window.AndroidReader) AndroidReader.onProgress(scrollFraction(), up); } catch(e){}
+      try { if (window.AndroidReader) AndroidReader.onProgress(scrollFraction(), krComputeAnchor(), up); } catch(e){}
       ticking = false;
     });
   }, { passive: true });
+
+  // Restore position. Prefer the block anchor; fall back to a raw fraction for
+  // rows saved before anchors existed.
+  var krRestoreActive = false;
+  var krStickyTimer = null;
+  function krStopSticky(){
+    krRestoreActive = false;
+    if (krStickyTimer){ clearInterval(krStickyTimer); krStickyTimer = null; }
+  }
+  window.krStopSticky = krStopSticky;
   window.krRestore = function(fraction){
     var doc = document.documentElement;
-    var scrollable = doc.scrollHeight - doc.clientHeight;
-    window.scrollTo(0, scrollable * fraction);
+    window.scrollTo(0, (doc.scrollHeight - doc.clientHeight) * fraction);
   };
+  window.krRestoreAnchor = function(anchor){
+    if (!krScrollToAnchor(anchor)) return;
+    // Re-pin to the anchor as images/fonts finish loading (they change layout
+    // above us), and stop the moment the reader scrolls themselves.
+    krRestoreActive = true;
+    function reapply(){ if (krRestoreActive) krScrollToAnchor(anchor); }
+    var imgs = document.images;
+    for (var i = 0; i < imgs.length; i++){
+      if (!imgs[i].complete){
+        imgs[i].addEventListener('load', reapply);
+        imgs[i].addEventListener('error', reapply);
+      }
+    }
+    window.addEventListener('load', reapply);
+    var tries = 0;
+    krStickyTimer = setInterval(function(){
+      if (!krRestoreActive){ krStopSticky(); return; }
+      reapply();
+      if (++tries >= 12) krStopSticky();
+    }, 200);
+  };
+  ['touchstart','wheel','keydown','mousedown'].forEach(function(ev){
+    window.addEventListener(ev, krStopSticky, { passive: true });
+  });
+
   // Page up/down by (almost) a screenful — driven by the hardware volume keys.
   window.krPageBy = function(dir){
+    krStopSticky();
     var doc = document.scrollingElement || document.documentElement;
     var page = Math.max(40, doc.clientHeight - 64);
     window.scrollBy({ top: page * dir, left: 0, behavior: 'smooth' });

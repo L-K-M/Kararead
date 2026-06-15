@@ -9,6 +9,8 @@ data class ReadingProgressEntity(
     @PrimaryKey val bookmarkId: String,
     val fraction: Float,
     val updatedAt: Long,
+    /** Block-anchor ("<index>:<fraction>") for layout-shift-resilient restore. */
+    val anchor: String? = null,
 )
 
 /** Offline cache of a fetched article so it reopens instantly / works offline. */

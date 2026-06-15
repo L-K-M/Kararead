@@ -1,10 +1,9 @@
 # awesome.md — a fresh review of Kararead
 
-A second-pass review of the whole codebase, by a new set of eyes. The first
-review lives in [`IMPROVEMENTS.md`](IMPROVEMENTS.md); this document goes deeper
-into correctness bugs hiding in the data/reader layers, calls out a few promised
-features that aren't actually wired up, and collects a pile of ideas — some
-practical, some just delightful.
+A review of the whole codebase: correctness bugs hiding in the data/reader
+layers, a few promised features that weren't actually wired up, and a pile of
+ideas — some practical, some just delightful. It's the living roadmap; the
+✅-marked items have since shipped.
 
 The code is genuinely good: clean MVVM, a tasteful reader, sensible offline
 story, real tests. Most of what follows is about the gap between *"compiles and
@@ -98,6 +97,15 @@ ever returns a `content.type` outside `link|text|asset|unknown`, kotlinx
 serialization throws and the entire paging load fails with an error state rather
 than degrading gracefully. A custom serializer defaulting to `Unknown` would make
 the client forward-compatible. Deferred.
+
+### A8. 🔧✅ Reading-progress restore drifted with late-loading images
+Restore scrolled to a raw scroll *fraction* computed once on `onReady`, before
+images/fonts had loaded — so as the layout grew, the restored position drifted.
+**Done:** progress now also records a **block anchor**
+(`reading_progress.anchor`, `"<blockIndex>:<fractionWithinBlock>"`); restore
+scrolls to that block and re-pins itself as images finish loading, stopping the
+moment the reader scrolls. Falls back to the fraction for rows saved before the
+anchor column (DB v4).
 
 ---
 

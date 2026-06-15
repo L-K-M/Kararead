@@ -7,8 +7,7 @@
 
 This document is the comprehensive plan. It captures the research, the product
 decisions, the technical architecture, and the execution checklist. A companion
-[`IMPROVEMENTS.md`](IMPROVEMENTS.md) (written after the first pass) tracks the
-post-build review and follow-up ideas.
+[`awesome.md`](awesome.md) tracks the post-build review and follow-up ideas.
 
 ---
 
@@ -38,7 +37,7 @@ you can put it down and pick it up later.
 - Full bookmark *management* (bulk tag editing, RSS feed config, AI re-summarize
   triggers) — Kararead reads; the official app manages.
 - Saving new links from a share sheet is a *nice-to-have* (implemented as a v1.1
-  improvement — see IMPROVEMENTS.md), not the core.
+  improvement — see awesome.md), not the core.
 
 ---
 
@@ -209,7 +208,7 @@ GitHub Actions:
 - [x] Unit tests
 - [x] CI/CD + Dependabot + README
 - [x] Build green (lint + tests + assembleDebug)
-- [x] Review → IMPROVEMENTS.md / awesome.md → execute worthwhile items
+- [x] Review → awesome.md → execute worthwhile items
 - [x] Follow-ups shipped: highlights, text-to-speech (voice picker), volume-key
       paging, tap-to-reveal chrome, reading streaks + Stats tab, tag browsing in
       Search, "recently opened" strip, more typefaces + live preview, manual

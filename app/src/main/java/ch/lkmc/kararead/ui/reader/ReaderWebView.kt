@@ -104,8 +104,9 @@ fun ReaderWebView(
     prefs: ReaderPreferences,
     baseUrl: String?,
     initialProgress: Float,
+    initialAnchor: String?,
     assetLoader: AssetLoader,
-    onProgress: (Float) -> Unit,
+    onProgress: (fraction: Float, anchor: String) -> Unit,
     onScrollDirection: (up: Boolean) -> Unit,
     onTap: () -> Unit,
     onSelection: (text: String, start: Int, end: Int) -> Unit,
@@ -149,7 +150,7 @@ fun ReaderWebView(
                 setBackgroundColor(safeColor(palette.background))
 
                 bridge.onReady = {
-                    restore(initialProgress)
+                    restore(initialProgress, initialAnchor)
                     applyHighlights(highlightsJson)
                 }
                 addJavascriptInterface(bridge, "AndroidReader")
@@ -197,10 +198,18 @@ fun ReaderWebView(
     )
 }
 
-private fun WebView.restore(fraction: Float) {
-    if (fraction <= 0.001f) return
-    // Defer a touch so layout (and most images) have settled.
-    postDelayed({ evaluateJavascript("window.krRestore && window.krRestore($fraction);", null) }, 120)
+private fun WebView.restore(fraction: Float, anchor: String?) {
+    if (fraction <= 0.001f && anchor.isNullOrEmpty()) return
+    // Defer a touch so the initial layout has settled; prefer the block anchor
+    // (which re-pins itself as late images load) and fall back to the fraction.
+    postDelayed({
+        if (!anchor.isNullOrEmpty()) {
+            val arg = org.json.JSONObject.quote(anchor)
+            evaluateJavascript("window.krRestoreAnchor && window.krRestoreAnchor($arg);", null)
+        } else {
+            evaluateJavascript("window.krRestore && window.krRestore($fraction);", null)
+        }
+    }, 120)
 }
 
 private fun WebView.applyHighlights(json: String) {
@@ -214,7 +223,7 @@ private fun safeColor(hex: String): Int =
 
 /** JS → Android bridge for scroll progress. */
 internal class ReaderBridge(
-    private val onProgress: (Float) -> Unit,
+    private val onProgress: (fraction: Float, anchor: String) -> Unit,
     private val onScrollDirection: (Boolean) -> Unit,
     private val onSelection: (text: String, start: Int, end: Int) -> Unit,
     private val onHighlightTap: (id: String) -> Unit,
@@ -223,9 +232,9 @@ internal class ReaderBridge(
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     @JavascriptInterface
-    fun onProgress(fraction: Double, up: Boolean) {
+    fun onProgress(fraction: Double, anchor: String, up: Boolean) {
         mainHandler.post {
-            onProgress(fraction.toFloat())
+            onProgress(fraction.toFloat(), anchor)
             onScrollDirection(up)
         }
     }
