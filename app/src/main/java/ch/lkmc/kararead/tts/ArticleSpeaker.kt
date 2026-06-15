@@ -1,8 +1,15 @@
 package ch.lkmc.kararead.tts
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +56,53 @@ class ArticleSpeaker @Inject constructor(
     /** The voice the user prefers (engine voice name); applied once the engine is ready. */
     var preferredVoiceId: String? = null
 
+    /**
+     * Narration speed (0.5×–3×). Applied to the engine immediately when set, or
+     * deferred to engine-ready. Mirrors [preferredVoiceId].
+     */
+    var speechRate: Float = 1.0f
+        set(value) {
+            field = value.coerceIn(0.5f, 3.0f)
+            tts?.setSpeechRate(field)
+        }
+
+    // --- Audio focus & "becoming noisy" (so narration behaves like a player) ---
+    private val audioManager: AudioManager? by lazy {
+        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    }
+    private var focusRequest: AudioFocusRequest? = null
+    private var pausedByFocusLoss = false
+    private var noisyRegistered = false
+
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        when (change) {
+            AudioManager.AUDIOFOCUS_LOSS -> stop()
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                if (_state.value.speaking) {
+                    pausedByFocusLoss = true
+                    pause()
+                }
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                if (pausedByFocusLoss && _state.value.paused) {
+                    pausedByFocusLoss = false
+                    enqueueFrom(_state.value.index)
+                }
+            }
+        }
+    }
+
+    // Pause when headphones are unplugged (or BT audio disconnects), like any
+    // media player — so narration doesn't suddenly play out of the speaker.
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            if (i?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && _state.value.speaking) {
+                pause()
+            }
+        }
+    }
+
     private val _state = MutableStateFlow(SpeechState())
     val state: StateFlow<SpeechState> = _state
 
@@ -64,6 +118,13 @@ class ArticleSpeaker @Inject constructor(
                     tts?.isLanguageAvailable(it) == TextToSpeech.LANG_AVAILABLE ||
                         tts?.isLanguageAvailable(it) == TextToSpeech.LANG_COUNTRY_AVAILABLE
                 } ?: Locale.ENGLISH
+                tts?.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+                tts?.setSpeechRate(speechRate)
                 tts?.setOnUtteranceProgressListener(listener)
                 publishVoices()
                 applyPreferredVoice()
@@ -72,6 +133,46 @@ class ArticleSpeaker @Inject constructor(
             } else {
                 _state.update { it.copy(active = false, failed = true) }
             }
+        }
+    }
+
+    private fun requestAudioFocus() {
+        val am = audioManager ?: return
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+            .setOnAudioFocusChangeListener(focusListener)
+            .setWillPauseWhenDucked(true)
+            .build()
+        focusRequest = request
+        am.requestAudioFocus(request)
+    }
+
+    private fun registerNoisy() {
+        if (noisyRegistered) return
+        runCatching {
+            ContextCompat.registerReceiver(
+                context,
+                noisyReceiver,
+                IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            noisyRegistered = true
+        }
+    }
+
+    /** Hand back audio focus and stop listening for headset-unplug events. */
+    private fun releaseAudio() {
+        pausedByFocusLoss = false
+        focusRequest?.let { req -> audioManager?.abandonAudioFocusRequest(req) }
+        focusRequest = null
+        if (noisyRegistered) {
+            runCatching { context.unregisterReceiver(noisyReceiver) }
+            noisyRegistered = false
         }
     }
 
@@ -113,6 +214,13 @@ class ArticleSpeaker @Inject constructor(
         if (s.active && !s.paused) enqueueFrom(s.index)
     }
 
+    /** Change narration speed; re-speaks the current sentence so it takes effect now. */
+    fun changeSpeechRate(rate: Float) {
+        speechRate = rate // setter applies to the engine
+        val s = _state.value
+        if (s.active && !s.paused) enqueueFrom(s.index)
+    }
+
     private val listener = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) {
             utteranceId?.toIntOrNull()?.let { i ->
@@ -123,6 +231,7 @@ class ArticleSpeaker @Inject constructor(
         override fun onDone(utteranceId: String?) {
             val i = utteranceId?.toIntOrNull() ?: return
             if (i >= chunks.lastIndex) {
+                releaseAudio()
                 _state.update { SpeechState() } // finished
             }
         }
@@ -170,11 +279,17 @@ class ArticleSpeaker @Inject constructor(
     fun stop() {
         tts?.stop()
         chunks = emptyList()
+        releaseAudio()
         _state.value = SpeechState()
     }
 
     private fun enqueueFrom(start: Int) {
         val engine = tts ?: return
+        // Claim audio focus (so other media ducks/pauses) and watch for the
+        // headset being pulled, then begin speaking.
+        pausedByFocusLoss = false
+        requestAudioFocus()
+        registerNoisy()
         engine.stop()
         for (i in start..chunks.lastIndex) {
             val mode = if (i == start) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
@@ -188,6 +303,7 @@ class ArticleSpeaker @Inject constructor(
         tts?.shutdown()
         tts = null
         ready = false
+        releaseAudio()
         _state.value = SpeechState()
     }
 

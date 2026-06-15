@@ -84,6 +84,7 @@ fun ReaderScreen(
     val speech by viewModel.speech.collectAsStateWithLifecycle()
     val voices by viewModel.voices.collectAsStateWithLifecycle()
     val ttsVoiceId by viewModel.ttsVoiceId.collectAsStateWithLifecycle()
+    val ttsRate by viewModel.ttsRate.collectAsStateWithLifecycle()
     val highlights by viewModel.highlights.collectAsStateWithLifecycle()
     val highlightsJson by viewModel.highlightsJson.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -130,6 +131,16 @@ fun ReaderScreen(
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.messages.collect {
             android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Narration couldn't start (no TTS engine / no readable text): tell the user
+    // rather than leaving "Listen" looking like it did nothing.
+    androidx.compose.runtime.LaunchedEffect(speech.failed) {
+        if (speech.failed) {
+            android.widget.Toast.makeText(
+                context, "Couldn't start narration on this device", android.widget.Toast.LENGTH_SHORT,
+            ).show()
         }
     }
 
@@ -432,6 +443,8 @@ fun ReaderScreen(
         ) {
             ListenBar(
                 speech = speech,
+                rate = ttsRate,
+                onCycleRate = { viewModel.setSpeechRate(nextSpeechRate(ttsRate)) },
                 onToggle = viewModel::toggleSpeech,
                 onPrev = { viewModel.skipSpeech(-1) },
                 onNext = { viewModel.skipSpeech(1) },
@@ -534,6 +547,8 @@ private fun HighlightsSheet(
 @Composable
 private fun ListenBar(
     speech: ch.lkmc.kararead.tts.SpeechState,
+    rate: Float,
+    onCycleRate: () -> Unit,
     onToggle: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
@@ -575,6 +590,16 @@ private fun ListenBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            androidx.compose.material3.TextButton(
+                onClick = onCycleRate,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
+            ) {
+                Text(
+                    formatSpeechRate(rate),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
             if (onVoice != null) {
                 IconButton(onClick = onVoice) {
                     Icon(Icons.Filled.RecordVoiceOver, contentDescription = "Choose voice")
@@ -635,6 +660,22 @@ private fun VoicePickerSheet(
             }
         }
     }
+}
+
+/** Narration speeds the rate button cycles through. */
+private val SPEECH_RATES = listOf(0.8f, 1.0f, 1.25f, 1.5f, 2.0f)
+
+/** Next speed in the cycle, snapping to the nearest current step first. */
+private fun nextSpeechRate(current: Float): Float {
+    val nearest = SPEECH_RATES.minByOrNull { kotlin.math.abs(it - current) } ?: 1.0f
+    val idx = SPEECH_RATES.indexOf(nearest)
+    return SPEECH_RATES[(idx + 1) % SPEECH_RATES.size]
+}
+
+/** Compact label, e.g. "1×" or "1.25×". */
+private fun formatSpeechRate(rate: Float): String {
+    val s = if (rate % 1f == 0f) rate.toInt().toString() else rate.toString().trimEnd('0').trimEnd('.')
+    return "$s×"
 }
 
 private tailrec fun android.content.Context.findVolumeKeyController(): ch.lkmc.kararead.VolumeKeyController? =
