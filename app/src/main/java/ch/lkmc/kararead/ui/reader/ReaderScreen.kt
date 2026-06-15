@@ -11,11 +11,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.outlined.StarBorder
@@ -61,6 +68,7 @@ fun ReaderScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs by viewModel.readerPrefs.collectAsStateWithLifecycle()
+    val speech by viewModel.speech.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val view = LocalView.current
 
@@ -188,6 +196,15 @@ fun ReaderScreen(
                             Icon(Icons.Filled.MoreVert, contentDescription = "More")
                         }
                         DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                            if (viewModel.canListen && !speech.active) {
+                                DropdownMenuItem(
+                                    text = { Text("Listen") },
+                                    leadingIcon = {
+                                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null)
+                                    },
+                                    onClick = { overflowOpen = false; viewModel.listen() },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Open original") },
                                 onClick = {
@@ -230,6 +247,24 @@ fun ReaderScreen(
                 drawStopIndicator = {},
             )
         }
+
+        // Narration ("listen") mini-player.
+        AnimatedVisibility(
+            visible = speech.active,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding(),
+        ) {
+            ListenBar(
+                speech = speech,
+                onToggle = viewModel::toggleSpeech,
+                onPrev = { viewModel.skipSpeech(-1) },
+                onNext = { viewModel.skipSpeech(1) },
+                onStop = viewModel::stopSpeech,
+            )
+        }
     }
 
     if (showControls) {
@@ -245,6 +280,56 @@ fun ReaderScreen(
             onKeepScreenOn = viewModel::setKeepScreenOn,
             onVolumeKeyPaging = viewModel::setVolumeKeyPaging,
         )
+    }
+}
+
+@Composable
+private fun ListenBar(
+    speech: ch.lkmc.kararead.tts.SpeechState,
+    onToggle: () -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onStop: () -> Unit,
+) {
+    androidx.compose.material3.Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+    ) {
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onPrev) {
+                Icon(Icons.Filled.Replay10, contentDescription = "Previous sentence")
+            }
+            IconButton(onClick = onToggle) {
+                Icon(
+                    if (speech.speaking) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (speech.speaking) "Pause" else "Play",
+                )
+            }
+            IconButton(onClick = onNext) {
+                Icon(Icons.Filled.Forward10, contentDescription = "Next sentence")
+            }
+            Text(
+                text = "Listening · ${(speech.index + 1).coerceAtMost(speech.total)}/${speech.total}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            IconButton(onClick = onStop) {
+                Icon(Icons.Filled.Close, contentDescription = "Stop")
+            }
+        }
     }
 }
 
