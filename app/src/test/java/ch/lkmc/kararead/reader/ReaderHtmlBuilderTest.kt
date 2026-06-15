@@ -89,6 +89,27 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
+    fun `highlight rendering is deferred while a selection is active`() {
+        // Re-wrapping the article's text nodes mid-selection collapses/jumps the
+        // reader's selection, so the renderer must bail out (and remember to
+        // replay) when a live selection exists.
+        val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
+        assertTrue(out.contains("krApplyHighlights"))
+        assertTrue(out.contains("krLiveSelection"))
+        assertTrue(out.contains("krPendingApply"))
+    }
+
+    @Test
+    fun `selection capture keeps a fallback for the cleared action-mode selection`() {
+        // The native "Highlight" action clears the live selection before our async
+        // capture runs, so a cloned fallback range must be kept.
+        val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
+        assertTrue(out.contains("krCaptureSelection"))
+        assertTrue(out.contains("krLastRange"))
+        assertTrue(out.contains("cloneRange"))
+    }
+
+    @Test
     fun `empty content shows a friendly placeholder`() {
         val out = ReaderHtmlBuilder.build(article(null), ReaderPreferences())
         assertTrue(out.contains("no readable content"))

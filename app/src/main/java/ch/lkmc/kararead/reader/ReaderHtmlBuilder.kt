@@ -439,33 +439,54 @@ body {
     }
     return total + offset;
   }
-  // Capture the current selection's text-offsets into the article, or null.
-  function krReadSelection(){
-    var sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
-    var root = krRoot(); if (!root) return null;
-    var range = sel.getRangeAt(0);
+  // Turn a DOM range (and its visible text) into character offsets into the
+  // article, or null if it falls outside the article or selects nothing.
+  function krCaptureRange(range, text){
+    var root = krRoot(); if (!root || !range) return null;
     if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
     var start = krTextOffset(root, range.startContainer, range.startOffset);
     var end = krTextOffset(root, range.endContainer, range.endOffset);
-    var text = sel.toString();
-    if (end > start && text.trim().length > 0) return { start: start, end: end, text: text };
+    if (end > start && text && text.trim().length > 0) return { start: start, end: end, text: text };
     return null;
   }
-  // Remember the last real selection — the action-mode "Highlight" item can
-  // clear the live selection before our async capture runs.
-  var krLastSel = null;
+  // The live, non-collapsed selection (range + text) if it lies inside the
+  // article, else null.
+  function krLiveSelection(){
+    var sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+    var range = sel.getRangeAt(0), root = krRoot();
+    if (!root || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+    return { range: range, text: sel.toString() };
+  }
+  // Remember the last real selection — the action-mode "Highlight" item finishes
+  // the action (clearing the live selection) before our async capture runs, so we
+  // keep a clone to fall back on. Offsets are computed lazily, at capture time,
+  // so dragging the selection handles stays cheap on long articles.
+  var krLastRange = null, krLastText = '';
+  // A highlight render requested while a selection was active; replayed once the
+  // selection clears so we never rewrite the DOM out from under the reader.
+  var krPendingApply = null;
   document.addEventListener('selectionchange', function(){
-    var s = krReadSelection();
-    if (s) krLastSel = s;
+    var live = krLiveSelection();
+    if (live){
+      krLastRange = live.range.cloneRange();
+      krLastText = live.text;
+      return;
+    }
+    if (krPendingApply !== null){
+      var pending = krPendingApply; krPendingApply = null;
+      window.krApplyHighlights(pending);
+    }
   });
   // Called from the native "Highlight" selection action.
   window.krCaptureSelection = function(){
-    var cap = krReadSelection() || krLastSel;
+    var live = krLiveSelection();
+    var cap = (live && krCaptureRange(live.range, live.text)) ||
+              krCaptureRange(krLastRange, krLastText);
     if (cap){
       try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(cap.text, cap.start, cap.end); } catch(e){}
     }
-    krLastSel = null;
+    krLastRange = null; krLastText = '';
     var sel = window.getSelection(); if (sel) sel.removeAllRanges();
   };
   function krUnwrap(root){
@@ -498,6 +519,11 @@ body {
   }
   window.krApplyHighlights = function(jsonStr){
     var root = krRoot(); if (!root) return;
+    // Rewriting the article's text nodes collapses or jumps any selection the
+    // reader is making, so defer the render until the selection clears (the
+    // selectionchange listener above replays it then).
+    if (krLiveSelection()){ krPendingApply = jsonStr; return; }
+    krPendingApply = null;
     krUnwrap(root);
     var list; try { list = JSON.parse(jsonStr); } catch(e){ return; }
     list.sort(function(a, b){ return b.start - a.start; });

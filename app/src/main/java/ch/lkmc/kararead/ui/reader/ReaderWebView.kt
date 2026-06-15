@@ -145,6 +145,13 @@ fun ReaderWebView(
         )
     }
 
+    // Tracks what we've already pushed into the page. The AndroidView [update]
+    // lambda runs on *every* recomposition (and the reader recomposes on each
+    // scroll-progress tick), so without this gate we'd re-run the highlight
+    // renderer constantly — which rewrites the article's text nodes and
+    // collapses/jumps any selection the reader is in the middle of making.
+    val applied = remember { AppliedReaderState() }
+
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
@@ -178,8 +185,20 @@ fun ReaderWebView(
                 setBackgroundColor(safeColor(palette.background))
 
                 bridge.onReady = {
+                    applied.ready = true
                     restore(initialProgress, initialAnchor)
-                    applyHighlights(highlightsJson)
+                    // Apply the latest desired state now that the document (and
+                    // its JS hooks) actually exist; the [update] lambda may have
+                    // run before the page finished loading.
+                    applied.desiredPrefs?.let { p ->
+                        applied.appliedPrefs = p
+                        evaluateJavascript(
+                            ReaderHtmlBuilder.applyPrefsScript(ReaderHtmlBuilder.paletteFor(p.theme), p),
+                            null,
+                        )
+                    }
+                    applied.appliedHighlights = applied.desiredHighlights
+                    applyHighlights(applied.desiredHighlights)
                 }
                 addJavascriptInterface(bridge, "AndroidReader")
                 pager.pageBy = { dir -> evaluateJavascript("window.krPageBy && window.krPageBy($dir);", null) }
@@ -217,10 +236,22 @@ fun ReaderWebView(
             }
         },
         update = { webView ->
+            // Record the latest desired state; it's pushed to the page once it's
+            // ready (above) and thereafter only when it actually changes — never
+            // on the recompositions that merely report scroll progress.
+            applied.desiredPrefs = prefs
+            applied.desiredHighlights = highlightsJson
             webView.setBackgroundColor(safeColor(palette.background))
-            val script = ReaderHtmlBuilder.applyPrefsScript(palette, prefs)
-            webView.evaluateJavascript(script, null)
-            webView.applyHighlights(highlightsJson)
+            if (applied.ready) {
+                if (applied.appliedPrefs != prefs) {
+                    applied.appliedPrefs = prefs
+                    webView.evaluateJavascript(ReaderHtmlBuilder.applyPrefsScript(palette, prefs), null)
+                }
+                if (applied.appliedHighlights != highlightsJson) {
+                    applied.appliedHighlights = highlightsJson
+                    webView.applyHighlights(highlightsJson)
+                }
+            }
         },
         onRelease = {
             pager.pageBy = null
@@ -252,6 +283,22 @@ private fun WebView.applyHighlights(json: String) {
 
 private fun safeColor(hex: String): Int =
     runCatching { AndroidColor.parseColor(hex) }.getOrDefault(AndroidColor.WHITE)
+
+/**
+ * Mutable scratch state remembered across recompositions so the [AndroidView]
+ * `update` lambda can tell "the preferences/highlights actually changed" apart
+ * from "we recomposed for an unrelated reason" (most often a scroll-progress
+ * tick). `desired*` is the newest value seen during composition; `applied*` is
+ * what has actually been pushed into the WebView. `ready` flips true once the
+ * document has loaded and its JS hooks exist.
+ */
+private class AppliedReaderState {
+    var ready = false
+    var desiredPrefs: ReaderPreferences? = null
+    var appliedPrefs: ReaderPreferences? = null
+    var desiredHighlights: String = "[]"
+    var appliedHighlights: String? = null
+}
 
 /** JS → Android bridge for scroll progress. */
 internal class ReaderBridge(
