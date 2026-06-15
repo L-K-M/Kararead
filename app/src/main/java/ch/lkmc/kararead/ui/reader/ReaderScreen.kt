@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -69,12 +70,16 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs by viewModel.readerPrefs.collectAsStateWithLifecycle()
     val speech by viewModel.speech.collectAsStateWithLifecycle()
+    val highlights by viewModel.highlights.collectAsStateWithLifecycle()
+    val highlightsJson by viewModel.highlightsJson.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val view = LocalView.current
 
     var chromeVisible by remember { mutableStateOf(true) }
     var showControls by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
+    var showHighlights by remember { mutableStateOf(false) }
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
     val pager = remember { ReaderPager() }
 
     androidx.compose.runtime.LaunchedEffect(prefs.keepScreenOn) {
@@ -125,6 +130,9 @@ fun ReaderScreen(
                     onProgress = viewModel::onProgress,
                     onScrollDirection = { up -> chromeVisible = up || state.progress < 0.05f },
                     onTap = { chromeVisible = !chromeVisible },
+                    onSelection = { text, start, end -> viewModel.addHighlight(text, start, end) },
+                    onHighlightTap = { id -> pendingDeleteId = id },
+                    highlightsJson = highlightsJson,
                     pager = pager,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -205,6 +213,15 @@ fun ReaderScreen(
                                     onClick = { overflowOpen = false; viewModel.listen() },
                                 )
                             }
+                            if (highlights.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Highlights (${highlights.size})") },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.FormatQuote, contentDescription = null)
+                                    },
+                                    onClick = { overflowOpen = false; showHighlights = true },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Open original") },
                                 onClick = {
@@ -280,6 +297,71 @@ fun ReaderScreen(
             onKeepScreenOn = viewModel::setKeepScreenOn,
             onVolumeKeyPaging = viewModel::setVolumeKeyPaging,
         )
+    }
+
+    if (showHighlights) {
+        HighlightsSheet(
+            highlights = highlights,
+            onDismiss = { showHighlights = false },
+            onDelete = viewModel::removeHighlight,
+        )
+    }
+
+    pendingDeleteId?.let { id ->
+        val hl = viewModel.highlight(id)
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingDeleteId = null },
+            title = { Text("Remove highlight?") },
+            text = { hl?.text?.let { Text("“${it.take(140)}”") } },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.removeHighlight(id); pendingDeleteId = null
+                }) { Text("Remove") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingDeleteId = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HighlightsSheet(
+    highlights: List<ch.lkmc.kararead.data.model.Highlight>,
+    onDismiss: () -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        androidx.compose.foundation.layout.Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text("Highlights", style = MaterialTheme.typography.titleLarge)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
+            highlights.forEach { hl ->
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        hl.text ?: "(highlight)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { onDelete(hl.id) }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Delete highlight")
+                    }
+                }
+                androidx.compose.material3.HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                )
+            }
+        }
     }
 }
 

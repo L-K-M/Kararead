@@ -210,6 +210,11 @@ body {
 .kr-article table { border-collapse: collapse; width: 100%; margin: 1.2em 0; font-size: .9em; display: block; overflow-x: auto; }
 .kr-article th, .kr-article td { border: 1px solid var(--kr-border); padding: .5em .7em; text-align: left; }
 .kr-article mark { background: #ffe57f; color: #1b1b1b; padding: 0 .1em; }
+.kr-article mark.kr-hl {
+  background: color-mix(in srgb, #ffd54f 55%, transparent);
+  color: inherit; padding: 0; border-radius: 2px; cursor: pointer;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
 .kr-empty { color: var(--kr-secondary); font-style: italic; }
 .kr-footer { color: var(--kr-secondary); text-align: center; margin-top: 3em; font-size: .8em; letter-spacing: .15em; }
 ::selection { background: color-mix(in srgb, var(--kr-link) 30%, transparent); }
@@ -250,10 +255,15 @@ body {
     window.scrollBy({ top: page * dir, left: 0, behavior: 'smooth' });
   };
   // A tap in the reading column (not on a link, and not a text selection)
-  // toggles the app chrome.
+  // toggles the app chrome. A tap on a highlight asks the host about it.
   document.addEventListener('click', function(e){
     var n = e.target;
     while (n && n !== document.body) {
+      if (n.classList && n.classList.contains('kr-hl')) {
+        var id = n.getAttribute('data-id');
+        try { if (window.AndroidReader && AndroidReader.onHighlightTap) AndroidReader.onHighlightTap(id); } catch(err){}
+        return;
+      }
       var tag = n.tagName;
       if (tag === 'A' || tag === 'BUTTON' || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       n = n.parentNode;
@@ -262,12 +272,86 @@ body {
     if (sel && sel.length > 0) return;
     try { if (window.AndroidReader && AndroidReader.onTap) AndroidReader.onTap(); } catch(e){}
   }, false);
+  ${highlightJs()}
   // Signal that the document is ready for progress restore.
   window.requestAnimationFrame(function(){
     try { if (window.AndroidReader) AndroidReader.onReady(); } catch(e){}
   });
 })();
 </script>
+    """.trimIndent()
+
+    /**
+     * Selection-capture + highlight-rendering JS. Offsets are character indices
+     * into the concatenated text of the article container, computed the same way
+     * on capture and on render so our own highlights round-trip exactly.
+     */
+    private fun highlightJs(): String = """
+  function krRoot(){ return document.querySelector('#kr-content .kr-article'); }
+  function krTextOffset(root, node, offset){
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var total = 0, n;
+    while (n = walker.nextNode()){
+      if (n === node) return total + offset;
+      total += n.nodeValue.length;
+    }
+    return total + offset;
+  }
+  // Called from the native "Highlight" selection action.
+  window.krCaptureSelection = function(){
+    var sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    var root = krRoot(); if (!root) return;
+    var range = sel.getRangeAt(0);
+    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+    var start = krTextOffset(root, range.startContainer, range.startOffset);
+    var end = krTextOffset(root, range.endContainer, range.endOffset);
+    var text = sel.toString();
+    if (end > start && text.trim().length > 0){
+      try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(text, start, end); } catch(e){}
+    }
+    sel.removeAllRanges();
+  };
+  function krUnwrap(root){
+    var marks = root.querySelectorAll('mark.kr-hl');
+    for (var i = 0; i < marks.length; i++){
+      var m = marks[i], p = m.parentNode;
+      while (m.firstChild) p.insertBefore(m.firstChild, m);
+      p.removeChild(m);
+    }
+    root.normalize();
+  }
+  function krWrapRange(root, start, end, id){
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var nodes = [], n; while (n = walker.nextNode()) nodes.push(n);
+    var pos = 0;
+    for (var i = 0; i < nodes.length; i++){
+      var node = nodes[i]; var len = node.nodeValue.length;
+      var nodeStart = pos, nodeEnd = pos + len; pos = nodeEnd;
+      if (nodeEnd <= start || nodeStart >= end) continue;
+      var s = Math.max(start, nodeStart) - nodeStart;
+      var e = Math.min(end, nodeEnd) - nodeStart;
+      try {
+        var range = document.createRange();
+        range.setStart(node, s); range.setEnd(node, e);
+        var mark = document.createElement('mark');
+        mark.className = 'kr-hl'; mark.setAttribute('data-id', id);
+        range.surroundContents(mark);
+      } catch(err){}
+    }
+  }
+  window.krApplyHighlights = function(jsonStr){
+    var root = krRoot(); if (!root) return;
+    krUnwrap(root);
+    var list; try { list = JSON.parse(jsonStr); } catch(e){ return; }
+    list.sort(function(a, b){ return b.start - a.start; });
+    for (var i = 0; i < list.length; i++){
+      var h = list[i];
+      if (typeof h.start === 'number' && typeof h.end === 'number' && h.end > h.start){
+        krWrapRange(root, h.start, h.end, String(h.id));
+      }
+    }
+  };
     """.trimIndent()
 
     private fun escape(s: String): String = s

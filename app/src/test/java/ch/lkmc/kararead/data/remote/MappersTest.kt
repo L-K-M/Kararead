@@ -3,6 +3,7 @@ package ch.lkmc.kararead.data.remote
 import ch.lkmc.kararead.data.model.ContentType
 import ch.lkmc.kararead.data.remote.dto.BookmarkDto
 import ch.lkmc.kararead.data.remote.dto.ContentDto
+import ch.lkmc.kararead.data.remote.dto.HighlightDto
 import ch.lkmc.kararead.data.remote.dto.TagRefDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -76,6 +77,18 @@ class MappersTest {
         val restored = article.toCacheEntity(now = 0L).toReaderArticle()
         assertTrue(restored.bookmark.archived)
         assertTrue(restored.bookmark.favourited)
+    }
+
+    @Test
+    fun `maps a highlight dto to domain`() {
+        val hl = HighlightDto(
+            id = "h1", bookmarkId = "b1", startOffset = 10, endOffset = 25,
+            color = "yellow", text = "a quote", note = null,
+        ).toDomain()
+        assertEquals("h1", hl.id)
+        assertEquals(10, hl.startOffset)
+        assertEquals(25, hl.endOffset)
+        assertEquals("a quote", hl.text)
     }
 
     @Test

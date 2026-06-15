@@ -153,6 +153,24 @@ class KarakeepRepository @Inject constructor(
     suspend fun getHighlights(bookmarkId: String): List<Highlight> =
         api().getBookmarkHighlights(bookmarkId).highlights.map { it.toDomain() }
 
+    suspend fun createHighlight(
+        bookmarkId: String,
+        startOffset: Int,
+        endOffset: Int,
+        text: String?,
+        color: String = "yellow",
+    ): Highlight = api().createHighlight(
+        ch.lkmc.kararead.data.remote.dto.CreateHighlightRequest(
+            bookmarkId = bookmarkId,
+            startOffset = startOffset,
+            endOffset = endOffset,
+            color = color,
+            text = text,
+        ),
+    ).toDomain()
+
+    suspend fun deleteHighlight(id: String) = api().deleteHighlight(id)
+
     // --- Connection test ---
 
     suspend fun testConnection(settings: ConnectionSettings): ConnectionResult {
