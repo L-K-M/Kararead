@@ -82,7 +82,7 @@ fun SearchScreen(
                     modifier = Modifier.padding(vertical = 8.dp),
                 )
                 Text(
-                    "Browse by tag",
+                    if (tags.total > tags.tags.size) "Browse by tag (top ${tags.tags.size})" else "Browse by tag",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
                 )

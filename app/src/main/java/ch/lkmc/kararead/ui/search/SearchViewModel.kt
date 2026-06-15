@@ -27,6 +27,7 @@ import javax.inject.Inject
 data class TagsUi(
     val loading: Boolean = true,
     val tags: List<Tag> = emptyList(),
+    val total: Int = 0,
     val error: String? = null,
 )
 
@@ -53,11 +54,18 @@ class SearchViewModel @Inject constructor(
         _tags.value = _tags.value.copy(loading = true, error = null)
         viewModelScope.launch {
             // Bound the wait so a non-returning request can't leave the UI
-            // spinning forever; surface a concrete error (with the exception
-            // type) so failures are visible instead of swallowed.
+            // spinning forever; surface a concrete error so failures are visible.
             runCatching { withTimeout(20_000) { repository.getTags() } }
                 .onSuccess { list ->
-                    _tags.value = TagsUi(loading = false, tags = list, error = null)
+                    // Cap the chip cloud: rendering every tag (libraries can have
+                    // thousands) in a non-lazy FlowRow blows up layout/draw and
+                    // OOMs. getTags() is sorted most-used first, so take the top N.
+                    _tags.value = TagsUi(
+                        loading = false,
+                        tags = list.take(MAX_TAG_CHIPS),
+                        total = list.size,
+                        error = null,
+                    )
                 }
                 .onFailure { e ->
                     android.util.Log.w("SearchViewModel", "Loading tags failed", e)
@@ -85,5 +93,9 @@ class SearchViewModel @Inject constructor(
 
     fun onQueryChange(value: String) {
         _query.value = value
+    }
+
+    private companion object {
+        const val MAX_TAG_CHIPS = 50
     }
 }
