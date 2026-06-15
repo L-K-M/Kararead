@@ -7,6 +7,7 @@ import androidx.paging.cachedIn
 import ch.lkmc.kararead.data.model.Bookmark
 import ch.lkmc.kararead.data.model.BookmarkSource
 import ch.lkmc.kararead.data.model.QueueSort
+import ch.lkmc.kararead.data.model.Tag
 import ch.lkmc.kararead.data.repository.KarakeepRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -28,8 +30,19 @@ class SearchViewModel @Inject constructor(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 
+    private val _tags = MutableStateFlow<List<Tag>>(emptyList())
+    /** Top tags for browsing, shown when no query is entered. */
+    val tags: StateFlow<List<Tag>> = _tags
+
     val progress: StateFlow<Map<String, Float>> =
         repository.allProgress().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    init {
+        viewModelScope.launch {
+            runCatching { repository.getTags() }
+                .onSuccess { _tags.value = it.filter { tag -> tag.count > 0 } }
+        }
+    }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     val results: Flow<PagingData<Bookmark>> =

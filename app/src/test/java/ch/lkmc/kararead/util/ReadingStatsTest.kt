@@ -51,6 +51,28 @@ class ReadingStatsTest {
     }
 
     @Test
+    fun `recentDaysSeries returns a continuous run ending today, filling gaps`() {
+        val series = recentDaysSeries(
+            mapOf(day(0) to 600L, day(2) to 1200L),
+            days = 4,
+            today = today,
+        )
+        assertEquals(4, series.size)
+        assertEquals(today.minusDays(3), series.first().date) // oldest first
+        assertEquals(today, series.last().date)
+        assertEquals(true, series.last().isToday)
+        assertEquals(10, series.last().minutes) // today: 600s → 10 min
+        assertEquals(0, series[2].minutes) // yesterday: no reading
+        assertEquals(20, series[1].minutes) // 2 days ago: 1200s → 20 min
+    }
+
+    @Test
+    fun `minutesInLastDays sums only the trailing window`() {
+        val data = mapOf(day(0) to 600L, day(3) to 600L, day(10) to 600L)
+        assertEquals(20, minutesInLastDays(data, days = 7, today = today)) // day0 + day3
+    }
+
+    @Test
     fun `longest streak spans a historical run`() {
         val stats = computeReadingStats(
             mapOf(

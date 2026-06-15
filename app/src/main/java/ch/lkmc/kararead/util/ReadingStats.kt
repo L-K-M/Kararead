@@ -15,6 +15,40 @@ data class ReadingStats(
 /** A day counts toward a streak once at least this much was read. */
 const val STREAK_MIN_SECONDS = 30L
 
+/** A day's reading minutes for the stats chart. */
+data class DayMinutes(
+    val date: LocalDate,
+    val minutes: Int,
+    val isToday: Boolean,
+)
+
+/**
+ * A continuous series of the last [days] calendar days ending today (oldest
+ * first), filling days with no reading as zero — for the stats bar chart.
+ */
+fun recentDaysSeries(
+    secondsByDate: Map<String, Long>,
+    days: Int,
+    today: LocalDate = LocalDate.now(),
+): List<DayMinutes> = (days - 1 downTo 0).map { offset ->
+    val date = today.minusDays(offset.toLong())
+    val secs = secondsByDate[date.toString()] ?: 0L
+    DayMinutes(date = date, minutes = (secs / 60).toInt(), isToday = offset == 0)
+}
+
+/** Minutes read over the trailing [days] days (inclusive of today). */
+fun minutesInLastDays(
+    secondsByDate: Map<String, Long>,
+    days: Int,
+    today: LocalDate = LocalDate.now(),
+): Int {
+    val cutoff = today.minusDays((days - 1).toLong())
+    return secondsByDate.entries.sumOf { (date, secs) ->
+        val d = runCatching { LocalDate.parse(date) }.getOrNull()
+        if (d != null && !d.isBefore(cutoff) && !d.isAfter(today)) (secs / 60).toInt() else 0
+    }
+}
+
 /**
  * Compute streak/minutes stats from per-day reading seconds.
  *

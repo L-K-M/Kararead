@@ -226,6 +226,10 @@ class KarakeepRepository @Inject constructor(
             computeReadingStats(rows.associate { it.date to it.seconds })
         }
 
+    /** Raw reading seconds keyed by ISO date, for the stats chart. */
+    fun readingSecondsByDate(): Flow<Map<String, Long>> =
+        statsDao.observeAll().map { rows -> rows.associate { it.date to it.seconds } }
+
     suspend fun clearCache() {
         cacheDao.clear()
     }
