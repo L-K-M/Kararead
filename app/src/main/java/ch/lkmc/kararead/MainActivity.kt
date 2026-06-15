@@ -86,22 +86,23 @@ class MainActivity : ComponentActivity(), VolumeKeyController {
         volumeKeyHandler = handler
     }
 
-    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        val code = event.keyCode
-        if (code == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
-            code == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
-        ) {
-            val handler = volumeKeyHandler
-            if (handler != null) {
-                // Act on key-down, but swallow the matching key-up too so the
-                // system volume UI never appears.
-                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
-                    handler(code == android.view.KeyEvent.KEYCODE_VOLUME_UP)
-                }
-                return true
-            }
+    private fun isVolumeKey(keyCode: Int) =
+        keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+            keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        val handler = volumeKeyHandler
+        if (handler != null && isVolumeKey(keyCode)) {
+            handler(keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP)
+            return true
         }
-        return super.dispatchKeyEvent(event)
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        // Swallow the matching key-up too, so the system volume UI never appears.
+        if (volumeKeyHandler != null && isVolumeKey(keyCode)) return true
+        return super.onKeyUp(keyCode, event)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
