@@ -335,6 +335,12 @@ internal class ReaderBridge(
     var onReady: (() -> Unit)? = null
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    // Belt-and-suspenders against OEM selection toolbars that re-fire the capture
+    // (the JS side guards too): drop a repeat of the same range seen moments ago
+    // before it reaches the view model.
+    private var lastSelSig: String? = null
+    private var lastSelAt = 0L
+
     @JavascriptInterface
     fun onProgress(fraction: Double, anchor: String, up: Boolean) {
         mainHandler.post {
@@ -350,6 +356,11 @@ internal class ReaderBridge(
 
     @JavascriptInterface
     fun onSelection(text: String, start: Int, end: Int) {
+        val sig = "$start:$end"
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (sig == lastSelSig && now - lastSelAt < 1500) return
+        lastSelSig = sig
+        lastSelAt = now
         android.util.Log.d("KrHighlight", "bridge.onSelection start=$start end=$end len=${text.length}")
         mainHandler.post { onSelection(text, start, end) }
     }

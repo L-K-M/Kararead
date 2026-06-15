@@ -463,26 +463,41 @@ body {
   // keep a clone to fall back on. Offsets are computed lazily, at capture time,
   // so dragging the selection handles stays cheap on long articles.
   var krLastRange = null, krLastText = '';
-  // True once the current selection has been reported, so a misbehaving OEM
-  // selection toolbar that re-invokes the action can't report it again and again.
-  var krReported = false;
+  // Signature ("start..end") and time of the last range we reported. Some OEM
+  // selection toolbars (notably Huawei's HwFloatingToolbar) re-invoke the
+  // "Highlight" action in a tight loop while the selection stays live, so a plain
+  // once-flag is unsafe: the live selection re-appears between invocations. We
+  // instead report a given range at most once per short window. krAttemptAt drives
+  // a cheap sliding throttle that swallows the burst *before* the per-call offset
+  // walk, so the loop can't jank a long article.
+  var krReportedSig = '', krReportedAt = 0, krAttemptAt = 0;
   document.addEventListener('selectionchange', function(){
     var live = krLiveSelection();
     if (live){
       krLastRange = live.range.cloneRange();
       krLastText = live.text;
-      krReported = false;
     }
   });
   // Called from the native "Highlight" selection action.
   window.krCaptureSelection = function(){
-    if (krReported) return 'dup';
+    var now = Date.now();
+    // Collapse a burst of rapid re-invocations (the OEM loop) cheaply.
+    var burst = (now - krAttemptAt) < 400;
+    krAttemptAt = now;
+    if (burst) return 'throttled';
     var live = krLiveSelection();
     var cap = (live && krCaptureRange(live.range, live.text)) ||
               krCaptureRange(krLastRange, krLastText);
     console.log('krCaptureSelection cap=' + (cap ? (cap.start + '..' + cap.end) : 'null'));
     if (cap){
-      krReported = true;
+      var sig = cap.start + '..' + cap.end;
+      if (sig === krReportedSig && (now - krReportedAt) < 1500){
+        // Same range already reported moments ago — ignore the repeat.
+        krLastRange = null; krLastText = '';
+        var s0 = window.getSelection(); if (s0){ try { s0.removeAllRanges(); } catch(e){} }
+        return 'dup';
+      }
+      krReportedSig = sig; krReportedAt = now;
       try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(cap.text, cap.start, cap.end); }
       catch(e){ console.log('onSelection threw ' + e); }
     }
