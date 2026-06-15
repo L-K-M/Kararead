@@ -39,8 +39,14 @@ class SearchViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            // Show all tags. (Karakeep doesn't always populate numBookmarks, so
+            // filtering by count can hide everything.) getTags() already sorts
+            // most-used first; fall back to alphabetical when counts are absent.
             runCatching { repository.getTags() }
-                .onSuccess { _tags.value = it.filter { tag -> tag.count > 0 } }
+                .onSuccess { tags ->
+                    _tags.value =
+                        if (tags.any { it.count > 0 }) tags else tags.sortedBy { it.name.lowercase() }
+                }
         }
     }
 
