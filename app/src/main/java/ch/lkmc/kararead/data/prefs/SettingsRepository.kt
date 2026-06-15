@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import ch.lkmc.kararead.data.model.AppThemeMode
 import ch.lkmc.kararead.data.model.ConnectionSettings
+import ch.lkmc.kararead.data.model.OfflinePreferences
 import ch.lkmc.kararead.data.model.QueueSort
 import ch.lkmc.kararead.data.model.ReaderFont
 import ch.lkmc.kararead.data.model.ReaderPreferences
@@ -49,6 +50,9 @@ class SettingsRepository @Inject constructor(
         val QUEUE_SORT = stringPreferencesKey("queue_sort")
         val READ_LATER_LIST_ID = stringPreferencesKey("read_later_list_id")
         val READ_LATER_LIST_NAME = stringPreferencesKey("read_later_list_name")
+        val OFFLINE_ENABLED = booleanPreferencesKey("offline_enabled")
+        val OFFLINE_WIFI_ONLY = booleanPreferencesKey("offline_wifi_only")
+        val OFFLINE_KEEP_COUNT = intPreferencesKey("offline_keep_count")
     }
 
     // Combine BOTH stores so the flow re-emits when either the URL/fallback or
@@ -146,6 +150,24 @@ class SettingsRepository @Inject constructor(
     suspend fun setQueueSort(sort: QueueSort) {
         context.settingsStore.edit { it[Keys.QUEUE_SORT] = sort.name }
     }
+
+    val offlinePreferences: Flow<OfflinePreferences> = context.settingsStore.data.map { p ->
+        OfflinePreferences(
+            enabled = p[Keys.OFFLINE_ENABLED] ?: true,
+            wifiOnly = p[Keys.OFFLINE_WIFI_ONLY] ?: true,
+            keepCount = (p[Keys.OFFLINE_KEEP_COUNT] ?: 20).coerceIn(5, 100),
+        )
+    }
+
+    suspend fun setOfflinePreferences(prefs: OfflinePreferences) {
+        context.settingsStore.edit { p ->
+            p[Keys.OFFLINE_ENABLED] = prefs.enabled
+            p[Keys.OFFLINE_WIFI_ONLY] = prefs.wifiOnly
+            p[Keys.OFFLINE_KEEP_COUNT] = prefs.keepCount.coerceIn(5, 100)
+        }
+    }
+
+    suspend fun offlinePreferencesOnce(): OfflinePreferences = offlinePreferences.first()
 
     /** The list the user designates as their "read it later" home, if any. */
     val readLaterList: Flow<Pair<String, String>?> = context.settingsStore.data.map { p ->

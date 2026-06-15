@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.work.CacheCleanupWorker
+import ch.lkmc.kararead.work.OfflineSync
 import java.util.concurrent.TimeUnit
 import coil.ImageLoader
 import coil.ImageLoaderFactory
@@ -27,6 +28,7 @@ class KararreadApp : Application(), Configuration.Provider, ImageLoaderFactory {
     @Inject lateinit var apiProvider: ApiProvider
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var imageLoader: ImageLoader
+    @Inject lateinit var offlineSync: OfflineSync
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -36,6 +38,12 @@ class KararreadApp : Application(), Configuration.Provider, ImageLoaderFactory {
         appScope.launch {
             settingsRepository.connection
                 .onEach { apiProvider.configure(it) }
+                .collect {}
+        }
+        // Keep offline prefetch scheduled to match the user's preferences.
+        appScope.launch {
+            settingsRepository.offlinePreferences
+                .onEach { offlineSync.apply(it) }
                 .collect {}
         }
         scheduleCacheCleanup()

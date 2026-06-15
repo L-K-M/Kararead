@@ -41,6 +41,7 @@ fun BookmarkList(
     progressFor: (String) -> Float,
     onOpen: (String) -> Unit,
     modifier: Modifier = Modifier,
+    isCached: (String) -> Boolean = { false },
     enableSwipe: Boolean = true,
     onArchive: ((Bookmark) -> Unit)? = null,
     onFavourite: ((Bookmark) -> Unit)? = null,
@@ -90,6 +91,7 @@ fun BookmarkList(
                                 BookmarkCard(
                                     bookmark = bookmark,
                                     progress = progressFor(bookmark.id),
+                                    offline = isCached(bookmark.id),
                                     onClick = { onOpen(bookmark.id) },
                                 )
                             }
@@ -97,6 +99,7 @@ fun BookmarkList(
                             BookmarkCard(
                                 bookmark = bookmark,
                                 progress = progressFor(bookmark.id),
+                                offline = isCached(bookmark.id),
                                 onClick = { onOpen(bookmark.id) },
                             )
                         }

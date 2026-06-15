@@ -46,6 +46,12 @@ interface CachedArticleDao {
     @Query("SELECT COUNT(*) FROM cached_article")
     suspend fun count(): Int
 
+    @Query("SELECT bookmarkId FROM cached_article")
+    fun observeIds(): Flow<List<String>>
+
+    @Query("SELECT bookmarkId FROM cached_article")
+    suspend fun ids(): List<String>
+
     @Query("DELETE FROM cached_article")
     suspend fun clear()
 }

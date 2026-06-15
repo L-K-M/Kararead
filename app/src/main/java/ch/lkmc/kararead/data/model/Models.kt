@@ -113,6 +113,17 @@ enum class AppThemeMode { SYSTEM, LIGHT, DARK }
 
 enum class QueueSort { NEWEST, OLDEST }
 
+/**
+ * Automatic offline-download preferences. Kararead keeps the top [keepCount]
+ * unread articles downloaded so there's always something to read offline, and
+ * removes them as you mark them read.
+ */
+data class OfflinePreferences(
+    val enabled: Boolean = true,
+    val wifiOnly: Boolean = true,
+    val keepCount: Int = 20,
+)
+
 /** Local, client-side reading progress (Karakeep has no server-side field). */
 data class ReadingProgress(
     val bookmarkId: String,
