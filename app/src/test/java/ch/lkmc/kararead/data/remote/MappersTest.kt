@@ -6,6 +6,7 @@ import ch.lkmc.kararead.data.remote.dto.ContentDto
 import ch.lkmc.kararead.data.remote.dto.HighlightDto
 import ch.lkmc.kararead.data.remote.dto.TagRefDto
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -89,6 +90,24 @@ class MappersTest {
         assertEquals(10, hl.startOffset)
         assertEquals(25, hl.endOffset)
         assertEquals("a quote", hl.text)
+    }
+
+    @Test
+    fun `text bookmark escapes html and keeps paragraph and line breaks`() {
+        val dto = BookmarkDto(
+            id = "t1",
+            archived = false,
+            favourited = false,
+            content = ContentDto.Text(text = "a < b & c\n\nsecond <tag> line\nwith break"),
+        )
+        val html = dto.toReaderArticle(resolver).htmlContent!!
+        // Special characters are escaped (not parsed as markup and dropped).
+        assertTrue(html.contains("a &lt; b &amp; c"))
+        assertTrue(html.contains("second &lt;tag&gt; line<br>with break"))
+        // The literal tag must not survive as real markup.
+        assertFalse(html.contains("<tag>"))
+        // Blank lines split into separate paragraphs.
+        assertEquals(2, Regex("<p>").findAll(html).count())
     }
 
     @Test
