@@ -1,12 +1,22 @@
 package ch.lkmc.kararead.ui.library
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
@@ -17,6 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -28,13 +39,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import ch.lkmc.kararead.data.model.QueueSort
 import ch.lkmc.kararead.ui.components.BookmarkList
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +63,7 @@ fun LibraryScreen(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     val cachedIds by viewModel.cachedIds.collectAsStateWithLifecycle()
+    val recents by viewModel.recents.collectAsStateWithLifecycle()
     val items = viewModel.bookmarks.collectAsLazyPagingItems()
     val snackbarHost = remember { SnackbarHostState() }
     var sortMenuOpen by remember { mutableStateOf(false) }
@@ -110,6 +129,9 @@ fun LibraryScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             FilterRow(ui = ui, onSelect = viewModel::selectTab)
+            if (recents.isNotEmpty()) {
+                RecentsStrip(recents = recents, onOpen = onOpenReader)
+            }
             BookmarkList(
                 items = items,
                 progressFor = { progress[it] ?: 0f },
@@ -121,6 +143,69 @@ fun LibraryScreen(
                 emptyTitle = emptyTitleFor(ui),
                 emptySubtitle = emptySubtitleFor(ui),
                 emptyEmoji = if (ui.tab == LibraryTab.INBOX || ui.tab == LibraryTab.READ_LATER) "✨" else "📭",
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecentsStrip(
+    recents: List<ch.lkmc.kararead.data.model.RecentArticle>,
+    onOpen: (String) -> Unit,
+) {
+    LazyRow(
+        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(recents, key = { it.id }) { article ->
+            RecentThumb(article = article, onClick = { onOpen(article.id) })
+        }
+    }
+}
+
+@Composable
+private fun RecentThumb(
+    article: ch.lkmc.kararead.data.model.RecentArticle,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .width(112.dp)
+            .height(64.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick),
+    ) {
+        if (!article.imageUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(article.imageUrl).crossfade(true).build(),
+                contentDescription = article.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        } else {
+            // No cover: show the title so the card is still recognisable.
+            Text(
+                text = article.title,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(8.dp),
+            )
+        }
+        // Thin reading-progress bar pinned to the bottom edge.
+        if (article.fraction > 0.01f) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth(article.fraction.coerceIn(0f, 1f))
+                    .height(3.dp)
+                    .background(MaterialTheme.colorScheme.primary),
             )
         }
     }

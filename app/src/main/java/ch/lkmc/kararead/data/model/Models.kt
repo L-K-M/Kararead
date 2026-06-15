@@ -140,6 +140,14 @@ data class ReadingProgress(
     val updatedAt: Long,
 )
 
+/** A recently-opened article, for the library's quick "jump back in" strip. */
+data class RecentArticle(
+    val id: String,
+    val title: String,
+    val imageUrl: String?,
+    val fraction: Float,
+)
+
 /** Strip protocol/www for compact display, e.g. "https://www.bbc.com/x" -> "bbc.com". */
 fun prettyHost(url: String): String = runCatching {
     val host = java.net.URI(url).host ?: return url

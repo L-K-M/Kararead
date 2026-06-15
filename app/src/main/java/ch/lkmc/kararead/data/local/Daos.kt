@@ -30,7 +30,6 @@ interface CachedArticleDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(article: CachedArticleEntity)
-
     @Query("SELECT * FROM cached_article WHERE bookmarkId = :id")
     suspend fun get(id: String): CachedArticleEntity?
 
@@ -52,9 +51,36 @@ interface CachedArticleDao {
     @Query("SELECT bookmarkId FROM cached_article")
     suspend fun ids(): List<String>
 
+    /**
+     * Recently *opened* articles, newest first: cached articles that also have a
+     * reading-progress row (i.e. the user actually read them). Joining on
+     * reading_progress excludes offline-prefetched-but-unopened articles, and
+     * archived articles drop out because their cache is deleted on archive.
+     */
+    @Query(
+        """
+        SELECT c.bookmarkId AS bookmarkId, c.title AS title, c.imageUrl AS imageUrl,
+               p.fraction AS fraction, p.updatedAt AS lastOpened
+        FROM reading_progress p
+        INNER JOIN cached_article c ON c.bookmarkId = p.bookmarkId
+        ORDER BY p.updatedAt DESC
+        LIMIT :limit
+        """,
+    )
+    fun observeRecent(limit: Int): Flow<List<RecentArticleRow>>
+
     @Query("DELETE FROM cached_article")
     suspend fun clear()
 }
+
+/** Projection for the library's "recently opened" strip. */
+data class RecentArticleRow(
+    val bookmarkId: String,
+    val title: String,
+    val imageUrl: String?,
+    val fraction: Float,
+    val lastOpened: Long,
+)
 
 @Dao
 interface ReadingStatsDao {

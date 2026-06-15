@@ -8,6 +8,7 @@ import androidx.paging.filter
 import ch.lkmc.kararead.data.model.Bookmark
 import ch.lkmc.kararead.data.model.BookmarkSource
 import ch.lkmc.kararead.data.model.QueueSort
+import ch.lkmc.kararead.data.model.RecentArticle
 import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.repository.KarakeepRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -67,6 +68,9 @@ class LibraryViewModel @Inject constructor(
 
     val cachedIds: StateFlow<Set<String>> =
         repository.cachedIds().stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    val recents: StateFlow<List<RecentArticle>> =
+        repository.recentlyOpened().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val pagingFlow: Flow<PagingData<Bookmark>> =
         combine(tab, sort, readLater) { t, s, rl -> Triple(t, s, rl) }

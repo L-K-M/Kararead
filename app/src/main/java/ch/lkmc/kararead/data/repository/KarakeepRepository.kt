@@ -16,6 +16,7 @@ import ch.lkmc.kararead.data.model.KarakeepList
 import ch.lkmc.kararead.data.model.QueueSort
 import ch.lkmc.kararead.data.model.ReaderArticle
 import ch.lkmc.kararead.data.model.ReadingProgress
+import ch.lkmc.kararead.data.model.RecentArticle
 import ch.lkmc.kararead.data.model.Tag
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.remote.KarakeepApi
@@ -238,6 +239,12 @@ class KarakeepRepository @Inject constructor(
 
     /** Ids of articles currently available offline, for "downloaded" indicators. */
     fun cachedIds(): Flow<Set<String>> = cacheDao.observeIds().map { it.toSet() }
+
+    /** Recently opened articles (newest first) for the library's quick-resume strip. */
+    fun recentlyOpened(limit: Int = 12): Flow<List<RecentArticle>> =
+        cacheDao.observeRecent(limit).map { rows ->
+            rows.map { RecentArticle(it.bookmarkId, it.title, it.imageUrl, it.fraction) }
+        }
 
     /** First [limit] bookmarks of a source, without paging (for offline prefetch). */
     private suspend fun firstPage(source: BookmarkSource, limit: Int): List<Bookmark> =
