@@ -414,6 +414,7 @@ fun ReaderScreen(
             onJustify = viewModel::setJustify,
             onKeepScreenOn = viewModel::setKeepScreenOn,
             onVolumeKeyPaging = viewModel::setVolumeKeyPaging,
+            onPagedMode = viewModel::setPagedMode,
         )
     }
 

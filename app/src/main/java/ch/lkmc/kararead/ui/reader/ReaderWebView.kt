@@ -150,6 +150,11 @@ fun ReaderWebView(
                 setBackgroundColor(safeColor(palette.background))
 
                 bridge.onReady = {
+                    // Apply paged mode (if on) before restoring, so restore lands
+                    // on the right page rather than a scroll offset.
+                    evaluateJavascript(
+                        "window.krSetPaged && window.krSetPaged(${prefs.pagedMode});", null,
+                    )
                     restore(initialProgress, initialAnchor)
                     applyHighlights(highlightsJson)
                 }
@@ -203,11 +208,14 @@ private fun WebView.restore(fraction: Float, anchor: String?) {
     // Defer a touch so the initial layout has settled; prefer the block anchor
     // (which re-pins itself as late images load) and fall back to the fraction.
     postDelayed({
+        // Seed the last-known fraction so paged mode can pick the right page
+        // regardless of whether it's enabled before or after this restore.
+        val prefix = "window.krSeedFraction && window.krSeedFraction($fraction);"
         if (!anchor.isNullOrEmpty()) {
             val arg = org.json.JSONObject.quote(anchor)
-            evaluateJavascript("window.krRestoreAnchor && window.krRestoreAnchor($arg);", null)
+            evaluateJavascript("$prefix window.krRestoreAnchor && window.krRestoreAnchor($arg);", null)
         } else {
-            evaluateJavascript("window.krRestore && window.krRestore($fraction);", null)
+            evaluateJavascript("$prefix window.krRestore && window.krRestore($fraction);", null)
         }
     }, 120)
 }

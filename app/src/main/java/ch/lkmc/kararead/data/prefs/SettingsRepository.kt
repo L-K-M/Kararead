@@ -45,6 +45,7 @@ class SettingsRepository @Inject constructor(
         val JUSTIFY = booleanPreferencesKey("justify")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val VOLUME_KEY_PAGING = booleanPreferencesKey("volume_key_paging")
+        val PAGED_MODE = booleanPreferencesKey("paged_mode")
         val TTS_VOICE = stringPreferencesKey("tts_voice")
         val APP_THEME = stringPreferencesKey("app_theme")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -114,6 +115,7 @@ class SettingsRepository @Inject constructor(
             justify = p[Keys.JUSTIFY] ?: false,
             keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: false,
             volumeKeyPaging = p[Keys.VOLUME_KEY_PAGING] ?: true,
+            pagedMode = p[Keys.PAGED_MODE] ?: false,
         )
     }
 
@@ -127,6 +129,7 @@ class SettingsRepository @Inject constructor(
             p[Keys.JUSTIFY] = prefs.justify
             p[Keys.KEEP_SCREEN_ON] = prefs.keepScreenOn
             p[Keys.VOLUME_KEY_PAGING] = prefs.volumeKeyPaging
+            p[Keys.PAGED_MODE] = prefs.pagedMode
         }
     }
 
