@@ -22,6 +22,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** State of the browse-by-tag section in the empty search view. */
+data class TagsUi(
+    val loading: Boolean = true,
+    val tags: List<Tag> = emptyList(),
+    val error: String? = null,
+)
+
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val repository: KarakeepRepository,
@@ -30,22 +37,30 @@ class SearchViewModel @Inject constructor(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 
-    private val _tags = MutableStateFlow<List<Tag>>(emptyList())
-    /** Top tags for browsing, shown when no query is entered. */
-    val tags: StateFlow<List<Tag>> = _tags
+    private val _tags = MutableStateFlow(TagsUi())
+    /** Tags for browsing, shown when no query is entered. */
+    val tags: StateFlow<TagsUi> = _tags
 
     val progress: StateFlow<Map<String, Float>> =
         repository.allProgress().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     init {
+        loadTags()
+    }
+
+    fun loadTags() {
+        _tags.value = _tags.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            // Show all tags. (Karakeep doesn't always populate numBookmarks, so
-            // filtering by count can hide everything.) getTags() already sorts
-            // most-used first; fall back to alphabetical when counts are absent.
             runCatching { repository.getTags() }
-                .onSuccess { tags ->
-                    _tags.value =
-                        if (tags.any { it.count > 0 }) tags else tags.sortedBy { it.name.lowercase() }
+                .onSuccess { list ->
+                    _tags.value = TagsUi(loading = false, tags = list, error = null)
+                }
+                .onFailure { e ->
+                    _tags.value = TagsUi(
+                        loading = false,
+                        tags = emptyList(),
+                        error = e.message ?: "Couldn't load tags.",
+                    )
                 }
         }
     }
