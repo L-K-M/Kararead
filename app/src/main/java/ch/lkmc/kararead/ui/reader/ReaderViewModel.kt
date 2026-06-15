@@ -140,6 +140,7 @@ class ReaderViewModel @Inject constructor(
     fun setMargin(value: Int) = updatePrefs { it.copy(horizontalMargin = value.coerceIn(0, 48)) }
     fun setJustify(value: Boolean) = updatePrefs { it.copy(justify = value) }
     fun setKeepScreenOn(value: Boolean) = updatePrefs { it.copy(keepScreenOn = value) }
+    fun setVolumeKeyPaging(value: Boolean) = updatePrefs { it.copy(volumeKeyPaging = value) }
 
     private fun updatePrefs(transform: (ReaderPreferences) -> ReaderPreferences) {
         viewModelScope.launch {

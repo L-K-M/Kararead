@@ -51,6 +51,7 @@ fun ReaderControlsSheet(
     onMargin: (Int) -> Unit,
     onJustify: (Boolean) -> Unit,
     onKeepScreenOn: (Boolean) -> Unit,
+    onVolumeKeyPaging: (Boolean) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -129,6 +130,7 @@ fun ReaderControlsSheet(
 
             ToggleRow("Justify text", prefs.justify, onJustify)
             ToggleRow("Keep screen on", prefs.keepScreenOn, onKeepScreenOn)
+            ToggleRow("Volume keys turn pages", prefs.volumeKeyPaging, onVolumeKeyPaging)
         }
     }
 }

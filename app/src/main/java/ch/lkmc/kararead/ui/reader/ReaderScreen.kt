@@ -61,9 +61,22 @@ fun ReaderScreen(
     var chromeVisible by remember { mutableStateOf(true) }
     var showControls by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
+    val pager = remember { ReaderPager() }
 
     androidx.compose.runtime.LaunchedEffect(prefs.keepScreenOn) {
         view.keepScreenOn = prefs.keepScreenOn
+    }
+
+    // Claim the hardware volume keys for page turning while this screen is shown.
+    val volumeController = remember(context) { context.findVolumeKeyController() }
+    androidx.compose.runtime.DisposableEffect(volumeController, prefs.volumeKeyPaging) {
+        if (volumeController != null && prefs.volumeKeyPaging) {
+            volumeController.setVolumeKeyHandler { up ->
+                pager.page(if (up) -1 else 1)
+                true
+            }
+        }
+        onDispose { volumeController?.setVolumeKeyHandler(null) }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -85,6 +98,8 @@ fun ReaderScreen(
                     assetLoader = viewModel.assetLoader,
                     onProgress = viewModel::onProgress,
                     onScrollDirection = { up -> chromeVisible = up || state.progress < 0.05f },
+                    onTap = { chromeVisible = !chromeVisible },
+                    pager = pager,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -210,9 +225,17 @@ fun ReaderScreen(
             onMargin = viewModel::setMargin,
             onJustify = viewModel::setJustify,
             onKeepScreenOn = viewModel::setKeepScreenOn,
+            onVolumeKeyPaging = viewModel::setVolumeKeyPaging,
         )
     }
 }
+
+private tailrec fun android.content.Context.findVolumeKeyController(): ch.lkmc.kararead.VolumeKeyController? =
+    when (this) {
+        is ch.lkmc.kararead.VolumeKeyController -> this
+        is android.content.ContextWrapper -> baseContext.findVolumeKeyController()
+        else -> null
+    }
 
 @Composable
 private fun LocalContentColorSafe(): Color = MaterialTheme.colorScheme.onSurfaceVariant

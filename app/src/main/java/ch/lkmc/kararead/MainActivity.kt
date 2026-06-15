@@ -66,10 +66,43 @@ class RootViewModel @Inject constructor(
     }
 }
 
+/**
+ * Lets the foreground reader claim the hardware volume keys for page turning.
+ * The handler receives `true` for volume-up and returns whether it consumed the
+ * event (so we don't also change the media volume).
+ */
+interface VolumeKeyController {
+    fun setVolumeKeyHandler(handler: ((up: Boolean) -> Boolean)?)
+}
+
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), VolumeKeyController {
 
     private val rootViewModel: RootViewModel by viewModels()
+
+    private var volumeKeyHandler: ((up: Boolean) -> Boolean)? = null
+
+    override fun setVolumeKeyHandler(handler: ((up: Boolean) -> Boolean)?) {
+        volumeKeyHandler = handler
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val code = event.keyCode
+        if (code == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+            code == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+        ) {
+            val handler = volumeKeyHandler
+            if (handler != null) {
+                // Act on key-down, but swallow the matching key-up too so the
+                // system volume UI never appears.
+                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    handler(code == android.view.KeyEvent.KEYCODE_VOLUME_UP)
+                }
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()

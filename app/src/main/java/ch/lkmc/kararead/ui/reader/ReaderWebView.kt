@@ -18,6 +18,18 @@ import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.reader.ReaderHtmlBuilder
 
 /**
+ * Lets the host (e.g. the reader screen's volume-key handler) page the WebView
+ * up or down without holding a direct reference to the view. [direction] is -1
+ * to page up (towards the start) and +1 to page down.
+ */
+class ReaderPager {
+    internal var pageBy: ((Int) -> Unit)? = null
+    fun page(direction: Int) {
+        pageBy?.invoke(direction)
+    }
+}
+
+/**
  * Renders an article in a WebView using a hand-tuned reader stylesheet.
  * Reports/restores scroll progress through a JS bridge and injects auth for
  * server-hosted images.
@@ -34,6 +46,8 @@ fun ReaderWebView(
     assetLoader: AssetLoader,
     onProgress: (Float) -> Unit,
     onScrollDirection: (up: Boolean) -> Unit,
+    onTap: () -> Unit,
+    pager: ReaderPager,
     modifier: Modifier = Modifier,
 ) {
     val palette = remember(prefs.theme) { ReaderHtmlBuilder.paletteFor(prefs.theme) }
@@ -43,7 +57,7 @@ fun ReaderWebView(
     }
 
     val bridge: ReaderBridge = remember {
-        ReaderBridge(onProgress = onProgress, onScrollDirection = onScrollDirection)
+        ReaderBridge(onProgress = onProgress, onScrollDirection = onScrollDirection, onTap = onTap)
     }
 
     AndroidView(
@@ -63,6 +77,7 @@ fun ReaderWebView(
 
                 bridge.onReady = { restore(initialProgress) }
                 addJavascriptInterface(bridge, "AndroidReader")
+                pager.pageBy = { dir -> evaluateJavascript("window.krPageBy && window.krPageBy($dir);", null) }
 
                 webViewClient = object : WebViewClient() {
                     override fun shouldInterceptRequest(
@@ -98,7 +113,10 @@ fun ReaderWebView(
             val script = ReaderHtmlBuilder.applyPrefsScript(palette, prefs)
             webView.evaluateJavascript(script, null)
         },
-        onRelease = { it.destroy() },
+        onRelease = {
+            pager.pageBy = null
+            it.destroy()
+        },
     )
 }
 
@@ -115,6 +133,7 @@ private fun safeColor(hex: String): Int =
 internal class ReaderBridge(
     private val onProgress: (Float) -> Unit,
     private val onScrollDirection: (Boolean) -> Unit,
+    private val onTap: () -> Unit,
 ) {
     var onReady: (() -> Unit)? = null
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -130,5 +149,10 @@ internal class ReaderBridge(
     @JavascriptInterface
     fun onReady() {
         mainHandler.post { onReady?.invoke() }
+    }
+
+    @JavascriptInterface
+    fun onTap() {
+        mainHandler.post { onTap() }
     }
 }
