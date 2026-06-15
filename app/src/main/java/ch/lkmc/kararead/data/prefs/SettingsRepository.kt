@@ -47,6 +47,7 @@ class SettingsRepository @Inject constructor(
         val VOLUME_KEY_PAGING = booleanPreferencesKey("volume_key_paging")
         val APP_THEME = stringPreferencesKey("app_theme")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val ACCENT_COLOR = intPreferencesKey("accent_color")
         val QUEUE_SORT = stringPreferencesKey("queue_sort")
         val READ_LATER_LIST_ID = stringPreferencesKey("read_later_list_id")
         val READ_LATER_LIST_NAME = stringPreferencesKey("read_later_list_name")
@@ -141,6 +142,13 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setDynamicColor(enabled: Boolean) {
         context.settingsStore.edit { it[Keys.DYNAMIC_COLOR] = enabled }
+    }
+
+    /** Manual accent (ARGB) used when dynamic color is off. 0 = the app default. */
+    val accentColor: Flow<Int> = context.settingsStore.data.map { it[Keys.ACCENT_COLOR] ?: 0 }
+
+    suspend fun setAccentColor(argb: Int) {
+        context.settingsStore.edit { it[Keys.ACCENT_COLOR] = argb }
     }
 
     val queueSort: Flow<QueueSort> = context.settingsStore.data.map { p ->

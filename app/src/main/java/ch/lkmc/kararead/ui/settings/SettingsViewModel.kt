@@ -22,6 +22,7 @@ data class SettingsUiState(
     val fallbackUrl: String = "",
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
+    val accentColor: Int = 0,
     val readLaterName: String? = null,
     val cachedCount: Int = 0,
     val offline: OfflinePreferences = OfflinePreferences(),
@@ -57,8 +58,9 @@ class SettingsViewModel @Inject constructor(
             base,
             repository.cachedIds().map { it.size },
             repository.readingStats(),
-        ) { s, cachedCount, stats ->
-            s.copy(cachedCount = cachedCount, stats = stats)
+            settings.accentColor,
+        ) { s, cachedCount, stats, accent ->
+            s.copy(cachedCount = cachedCount, stats = stats, accentColor = accent)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
 
     fun setThemeMode(mode: AppThemeMode) {
@@ -67,6 +69,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setDynamicColor(enabled: Boolean) {
         viewModelScope.launch { settings.setDynamicColor(enabled) }
+    }
+
+    fun setAccentColor(argb: Int) {
+        viewModelScope.launch { settings.setAccentColor(argb) }
     }
 
     fun setOfflineEnabled(enabled: Boolean) = updateOffline { it.copy(enabled = enabled) }
