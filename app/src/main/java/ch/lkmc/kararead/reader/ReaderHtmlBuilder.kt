@@ -483,11 +483,16 @@ body {
     var live = krLiveSelection();
     var cap = (live && krCaptureRange(live.range, live.text)) ||
               krCaptureRange(krLastRange, krLastText);
+    console.log('krCaptureSelection live=' + (!!live) + ' lastRange=' + (!!krLastRange) +
+                ' bridge=' + (!!(window.AndroidReader && AndroidReader.onSelection)) +
+                ' cap=' + (cap ? (cap.start + '..' + cap.end + ' "' + cap.text.slice(0, 30) + '"') : 'null'));
     if (cap){
-      try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(cap.text, cap.start, cap.end); } catch(e){}
+      try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(cap.text, cap.start, cap.end); }
+      catch(e){ console.log('onSelection threw ' + e); }
     }
     krLastRange = null; krLastText = '';
     var sel = window.getSelection(); if (sel) sel.removeAllRanges();
+    return cap ? 'ok' : 'nocap';
   };
   function krUnwrap(root){
     var marks = root.querySelectorAll('mark.kr-hl');

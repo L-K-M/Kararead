@@ -82,6 +82,7 @@ private class HighlightWebView(context: Context) : WebView(context) {
         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
             val res = inner.onCreateActionMode(mode, menu)
             menu.add(Menu.NONE, HIGHLIGHT_ITEM_ID, 0, "Highlight")
+            android.util.Log.d("KrHighlight", "onCreateActionMode: added Highlight item (inner=$res)")
             return res
         }
 
@@ -89,6 +90,7 @@ private class HighlightWebView(context: Context) : WebView(context) {
             inner.onPrepareActionMode(mode, menu)
 
         override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            android.util.Log.d("KrHighlight", "onActionItemClicked: id=${item.itemId} (ours=$HIGHLIGHT_ITEM_ID)")
             if (item.itemId == HIGHLIGHT_ITEM_ID) {
                 onHighlightRequested?.invoke()
                 mode.finish()
@@ -164,7 +166,10 @@ fun ReaderWebView(
                     }
                 }
                 onHighlightRequested = {
-                    evaluateJavascript("window.krCaptureSelection && window.krCaptureSelection();", null)
+                    android.util.Log.d("KrHighlight", "onHighlightRequested -> krCaptureSelection")
+                    evaluateJavascript(
+                        "window.krCaptureSelection ? window.krCaptureSelection() : 'NO_FN';",
+                    ) { result -> android.util.Log.d("KrHighlight", "krCaptureSelection returned $result") }
                 }
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
@@ -206,6 +211,17 @@ fun ReaderWebView(
                     evaluateJavascript("window.krSmoothToFraction && window.krSmoothToFraction($f);", null)
                 }
 
+                // Diagnostic: surface the reader page's console.log/error in logcat
+                // (tag KrHighlightJS) so the highlight capture path can be traced.
+                webChromeClient = object : android.webkit.WebChromeClient() {
+                    override fun onConsoleMessage(cm: android.webkit.ConsoleMessage): Boolean {
+                        android.util.Log.i(
+                            "KrHighlightJS",
+                            "${cm.message()} @${cm.sourceId()}:${cm.lineNumber()}",
+                        )
+                        return true
+                    }
+                }
                 webViewClient = object : WebViewClient() {
                     override fun shouldInterceptRequest(
                         view: WebView,
@@ -325,6 +341,7 @@ internal class ReaderBridge(
 
     @JavascriptInterface
     fun onSelection(text: String, start: Int, end: Int) {
+        android.util.Log.d("KrHighlight", "bridge.onSelection start=$start end=$end len=${text.length}")
         mainHandler.post { onSelection(text, start, end) }
     }
 

@@ -220,14 +220,22 @@ class ReaderViewModel @Inject constructor(
 
     /** Create a highlight from a captured text selection. */
     fun addHighlight(text: String, start: Int, end: Int) {
-        if (end <= start) return
+        android.util.Log.d("KrHighlight", "addHighlight start=$start end=$end len=${text.length} bookmark=$bookmarkId")
+        if (end <= start) {
+            android.util.Log.w("KrHighlight", "addHighlight ignored: end<=start")
+            return
+        }
         viewModelScope.launch {
             runCatching { repository.createHighlight(bookmarkId, start, end, text.trim()) }
                 .onSuccess { created ->
+                    android.util.Log.d("KrHighlight", "createHighlight OK id=${created.id} ${created.startOffset}..${created.endOffset}")
                     _highlights.update { it + created }
                     _messages.trySend("Highlighted")
                 }
-                .onFailure { _messages.trySend("Couldn't save highlight — try again") }
+                .onFailure { e ->
+                    android.util.Log.e("KrHighlight", "createHighlight FAILED", e)
+                    _messages.trySend("Couldn't save highlight — try again")
+                }
         }
     }
 
