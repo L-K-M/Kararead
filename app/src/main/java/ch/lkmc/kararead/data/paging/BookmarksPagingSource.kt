@@ -29,5 +29,8 @@ class BookmarksPagingSource(
         }
     }
 
+    // Forward-only cursor pagination: there are no stable page keys to resume
+    // from, so a refresh intentionally restarts at the top (null cursor) rather
+    // than trying to anchor around the user's current position.
     override fun getRefreshKey(state: PagingState<String, Bookmark>): String? = null
 }

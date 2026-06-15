@@ -85,6 +85,18 @@ class DtoSerializationTest {
     }
 
     @Test
+    fun `decodes an unrecognized content type as Unknown instead of throwing`() {
+        // A content type we don't model (e.g. a future Karakeep "video") must
+        // not fail the whole page — it should fall back to Unknown.
+        val payload = """
+        { "id": "bm5", "archived": false, "favourited": false,
+          "content": { "type": "video", "url": "https://example.com/v", "duration": 120 } }
+        """.trimIndent()
+        val bm = json.decodeFromString<BookmarkDto>(payload)
+        assertTrue(bm.content is ContentDto.Unknown)
+    }
+
+    @Test
     fun `defaults missing optional fields`() {
         val payload = """{ "id": "bm4", "archived": false, "favourited": false }"""
         val bm = json.decodeFromString<BookmarkDto>(payload)

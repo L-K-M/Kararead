@@ -1,7 +1,12 @@
 package ch.lkmc.kararead.data.remote.dto
 
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonContentPolymorphicSerializer
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Wire models mapped 1:1 from the Karakeep OpenAPI spec (`/api/v1`).
@@ -33,10 +38,11 @@ data class BookmarkDto(
 )
 
 /**
- * The `content` discriminated union. kotlinx.serialization uses the default
- * `"type"` class discriminator, which matches Karakeep exactly.
+ * The `content` discriminated union, keyed on the `"type"` field. A custom
+ * content-polymorphic serializer maps any *unrecognized* type to [Unknown]
+ * instead of throwing, so a future Karakeep content type can't fail a page.
  */
-@Serializable
+@Serializable(with = ContentDtoSerializer::class)
 sealed class ContentDto {
 
     @Serializable
@@ -81,6 +87,18 @@ sealed class ContentDto {
     @Serializable
     @SerialName("unknown")
     data object Unknown : ContentDto()
+}
+
+/** Picks the [ContentDto] subtype by `type`, defaulting to [ContentDto.Unknown]. */
+object ContentDtoSerializer :
+    JsonContentPolymorphicSerializer<ContentDto>(ContentDto::class) {
+    override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ContentDto> =
+        when (runCatching { element.jsonObject["type"]?.jsonPrimitive?.content }.getOrNull()) {
+            "link" -> ContentDto.Link.serializer()
+            "text" -> ContentDto.Text.serializer()
+            "asset" -> ContentDto.Asset.serializer()
+            else -> ContentDto.Unknown.serializer()
+        }
 }
 
 @Serializable

@@ -45,6 +45,8 @@ class ApiProvider @Inject constructor() {
         val hosts: Set<String>,
     )
 
+    // ContentDto's custom serializer (see Dtos.kt) decodes an unrecognized
+    // content `type` as Unknown instead of throwing, keeping us forward-compatible.
     val json: Json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true

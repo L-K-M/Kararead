@@ -11,11 +11,13 @@ import ch.lkmc.kararead.data.model.ReaderTheme
 import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.repository.KarakeepRepository
+import ch.lkmc.kararead.di.ApplicationScope
 import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.tts.ArticleSpeaker
 import ch.lkmc.kararead.tts.SpeechState
 import ch.lkmc.kararead.tts.VoiceInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +50,7 @@ class ReaderViewModel @Inject constructor(
     private val apiProvider: ApiProvider,
     val assetLoader: AssetLoader,
     private val speaker: ArticleSpeaker,
+    @ApplicationScope private val appScope: CoroutineScope,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -89,6 +92,11 @@ class ReaderViewModel @Inject constructor(
 
     private var saveJob: Job? = null
     private var lastSaved = 0f
+
+    // The most recent progress reported by the WebView, so we can flush it on
+    // exit even if the debounce window hadn't elapsed.
+    private var pendingFraction = 0f
+    private var pendingAnchor: String? = null
 
     // True once the user has toggled read/favourite in this session, so a late
     // live-state refresh never clobbers their optimistic change.
@@ -142,12 +150,14 @@ class ReaderViewModel @Inject constructor(
     /** Called frequently from the WebView scroll bridge; persists with debounce. */
     fun onProgress(fraction: Float, anchor: String) {
         _state.update { it.copy(progress = fraction) }
+        pendingFraction = fraction
+        pendingAnchor = anchor.takeIf { it.isNotEmpty() }
         if (kotlin.math.abs(fraction - lastSaved) < 0.01f) return
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
             delay(400)
             lastSaved = fraction
-            repository.saveProgress(bookmarkId, fraction, anchor.takeIf { it.isNotEmpty() })
+            repository.saveProgress(bookmarkId, fraction, pendingAnchor)
         }
     }
 
@@ -229,6 +239,14 @@ class ReaderViewModel @Inject constructor(
 
     override fun onCleared() {
         speaker.shutdown()
+        // Flush the last scroll position even though viewModelScope is being
+        // cancelled — otherwise the final movement before exit (when "resume"
+        // matters most) is lost with the debounced write.
+        if (bookmarkId.isNotEmpty() && kotlin.math.abs(pendingFraction - lastSaved) >= 0.001f) {
+            val fraction = pendingFraction
+            val anchor = pendingAnchor
+            appScope.launch { repository.saveProgress(bookmarkId, fraction, anchor) }
+        }
         super.onCleared()
     }
 
