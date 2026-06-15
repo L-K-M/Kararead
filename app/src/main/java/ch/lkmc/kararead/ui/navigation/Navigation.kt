@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -34,14 +34,14 @@ import ch.lkmc.kararead.ui.onboarding.OnboardingScreen
 import ch.lkmc.kararead.ui.reader.ReaderScreen
 import ch.lkmc.kararead.ui.search.SearchScreen
 import ch.lkmc.kararead.ui.settings.SettingsScreen
+import ch.lkmc.kararead.ui.stats.StatsScreen
 import ch.lkmc.kararead.ui.tags.TagBookmarksScreen
-import ch.lkmc.kararead.ui.tags.TagsScreen
 
 object Routes {
     const val ONBOARDING = "onboarding"
     const val LIBRARY = "library"
     const val LISTS = "lists"
-    const val TAGS = "tags"
+    const val STATS = "stats"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
     const val READER = "reader/{bookmarkId}"
@@ -60,7 +60,7 @@ private data class TopTab(val route: String, val label: String, val icon: ImageV
 private val topTabs = listOf(
     TopTab(Routes.LIBRARY, "Read", Icons.AutoMirrored.Outlined.MenuBook),
     TopTab(Routes.LISTS, "Lists", Icons.Outlined.CollectionsBookmark),
-    TopTab(Routes.TAGS, "Tags", Icons.Outlined.Tag),
+    TopTab(Routes.STATS, "Stats", Icons.Outlined.Insights),
     TopTab(Routes.SEARCH, "Search", Icons.Outlined.Search),
     TopTab(Routes.SETTINGS, "Settings", Icons.Outlined.Settings),
 )
@@ -122,15 +122,14 @@ fun KararreadNavHost(startDestination: String) {
                     },
                 )
             }
-            tabComposable(Routes.TAGS, padding) {
-                TagsScreen(
-                    onOpenTag = { id, name ->
-                        navController.navigate(Routes.tagDetail(id, name))
-                    },
-                )
+            tabComposable(Routes.STATS, padding) {
+                StatsScreen()
             }
             tabComposable(Routes.SEARCH, padding) {
-                SearchScreen(onOpenReader = { navController.navigate(Routes.reader(it)) })
+                SearchScreen(
+                    onOpenReader = { navController.navigate(Routes.reader(it)) },
+                    onOpenTag = { id, name -> navController.navigate(Routes.tagDetail(id, name)) },
+                )
             }
             tabComposable(Routes.SETTINGS, padding) {
                 SettingsScreen(

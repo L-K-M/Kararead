@@ -1,13 +1,19 @@
 package ch.lkmc.kararead.ui.search
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -21,15 +27,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import ch.lkmc.kararead.ui.components.BookmarkList
-import ch.lkmc.kararead.ui.components.MessageState
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     onOpenReader: (String) -> Unit,
+    onOpenTag: (id: String, name: String) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
+    val tags by viewModel.tags.collectAsStateWithLifecycle()
     val results = viewModel.results.collectAsLazyPagingItems()
 
     Column(
@@ -56,11 +64,35 @@ fun SearchScreen(
         )
 
         if (query.trim().length < 2) {
-            MessageState(
-                title = "Search your reading",
-                subtitle = "Find articles by title, content, #tag, or qualifiers like is:fav.",
-                emoji = "🔍",
-            )
+            // No query yet: offer browsing by tag.
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+            ) {
+                Text(
+                    "Search by title, content, #tag, or qualifiers like is:fav.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+                if (tags.isNotEmpty()) {
+                    Text(
+                        "Browse by tag",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        tags.forEach { tag ->
+                            AssistChip(
+                                onClick = { onOpenTag(tag.id, tag.name) },
+                                label = { Text("#${tag.name}") },
+                            )
+                        }
+                    }
+                }
+            }
         } else {
             Text(
                 "Tip: try #tag, is:fav, or url:example.com",

@@ -74,15 +74,6 @@ fun SettingsScreen(
                 subtitle = state.readLaterName ?: "Pick one in the Lists tab",
             )
 
-            if (state.stats.hasAny) {
-                HorizontalDivider()
-                SectionHeader("Reading")
-                SettingRow(
-                    title = streakTitle(state.stats.currentStreakDays),
-                    subtitle = readingStatsSubtitle(state.stats),
-                )
-            }
-
             HorizontalDivider()
             SectionHeader("Appearance")
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -298,17 +289,3 @@ private fun offlineStatusSubtitle(state: SettingsUiState): String {
     return if (state.offline.enabled) "$ready · keeping up to ${state.offline.keepCount}" else ready
 }
 
-private fun streakTitle(days: Int): String = when (days) {
-    0 -> "No active streak"
-    1 -> "🔥 1-day streak"
-    else -> "🔥 $days-day streak"
-}
-
-private fun readingStatsSubtitle(stats: ch.lkmc.kararead.util.ReadingStats): String {
-    val parts = buildList {
-        if (stats.todayMinutes > 0) add("${stats.todayMinutes} min read today")
-        if (stats.longestStreakDays > 1) add("best ${stats.longestStreakDays} days")
-        add("${stats.daysReadTotal} day(s) total")
-    }
-    return parts.joinToString(" · ")
-}
