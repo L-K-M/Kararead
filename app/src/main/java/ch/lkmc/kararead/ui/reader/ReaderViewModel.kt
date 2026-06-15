@@ -11,6 +11,8 @@ import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.repository.KarakeepRepository
 import ch.lkmc.kararead.reader.AssetLoader
+import ch.lkmc.kararead.tts.ArticleSpeaker
+import ch.lkmc.kararead.tts.SpeechState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -39,8 +41,11 @@ class ReaderViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val apiProvider: ApiProvider,
     val assetLoader: AssetLoader,
+    private val speaker: ArticleSpeaker,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
+
+    val speech: StateFlow<SpeechState> = speaker.state
 
     private val bookmarkId: String = savedStateHandle.get<String>("bookmarkId").orEmpty()
 
@@ -151,6 +156,21 @@ class ReaderViewModel @Inject constructor(
     /** Record foreground reading time (driven by the screen's lifecycle ticker). */
     fun recordReadingSeconds(seconds: Long) {
         viewModelScope.launch { repository.addReadingSeconds(seconds) }
+    }
+
+    // --- Text-to-speech ---
+
+    /** Whether the current article has readable text to narrate. */
+    val canListen: Boolean get() = !_state.value.article?.textContent.isNullOrBlank()
+
+    fun listen() = speaker.start(_state.value.article?.textContent)
+    fun toggleSpeech() = speaker.togglePlayPause()
+    fun skipSpeech(delta: Int) = speaker.skipBy(delta)
+    fun stopSpeech() = speaker.stop()
+
+    override fun onCleared() {
+        speaker.shutdown()
+        super.onCleared()
     }
 
     fun url(): String? = _state.value.article?.bookmark?.url
