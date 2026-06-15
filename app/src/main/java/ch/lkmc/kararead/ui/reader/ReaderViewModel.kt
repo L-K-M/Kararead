@@ -3,6 +3,7 @@ package ch.lkmc.kararead.ui.reader
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.lkmc.kararead.data.model.Highlight
 import ch.lkmc.kararead.data.model.ReaderArticle
 import ch.lkmc.kararead.data.model.ReaderFont
 import ch.lkmc.kararead.data.model.ReaderPreferences
@@ -19,9 +20,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 
 data class ReaderUiState(
@@ -48,6 +52,24 @@ class ReaderViewModel @Inject constructor(
     val speech: StateFlow<SpeechState> = speaker.state
 
     private val bookmarkId: String = savedStateHandle.get<String>("bookmarkId").orEmpty()
+
+    private val _highlights = MutableStateFlow<List<Highlight>>(emptyList())
+    val highlights: StateFlow<List<Highlight>> = _highlights
+
+    /** Highlights serialized as `[{id,start,end}]` for the WebView renderer. */
+    val highlightsJson: StateFlow<String> =
+        _highlights.map { list ->
+            JSONArray().apply {
+                list.forEach { h ->
+                    put(
+                        JSONObject()
+                            .put("id", h.id)
+                            .put("start", h.startOffset)
+                            .put("end", h.endOffset),
+                    )
+                }
+            }.toString()
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, "[]")
 
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state
@@ -94,6 +116,8 @@ class ReaderViewModel @Inject constructor(
                             _state.update { it.copy(archived = archived, favourited = favourited) }
                         }
                     }
+                    runCatching { repository.getHighlights(bookmarkId) }
+                        .onSuccess { _highlights.value = it }
                 }
                 .onFailure { e ->
                     _state.update {
@@ -157,6 +181,24 @@ class ReaderViewModel @Inject constructor(
     fun recordReadingSeconds(seconds: Long) {
         viewModelScope.launch { repository.addReadingSeconds(seconds) }
     }
+
+    // --- Highlights ---
+
+    /** Create a highlight from a captured text selection. */
+    fun addHighlight(text: String, start: Int, end: Int) {
+        if (end <= start) return
+        viewModelScope.launch {
+            runCatching { repository.createHighlight(bookmarkId, start, end, text.trim()) }
+                .onSuccess { created -> _highlights.update { it + created } }
+        }
+    }
+
+    fun removeHighlight(id: String) {
+        _highlights.update { list -> list.filterNot { it.id == id } }
+        viewModelScope.launch { runCatching { repository.deleteHighlight(id) } }
+    }
+
+    fun highlight(id: String): Highlight? = _highlights.value.firstOrNull { it.id == id }
 
     // --- Text-to-speech ---
 
