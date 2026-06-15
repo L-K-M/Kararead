@@ -488,7 +488,6 @@ body {
     var live = krLiveSelection();
     var cap = (live && krCaptureRange(live.range, live.text)) ||
               krCaptureRange(krLastRange, krLastText);
-    console.log('krCaptureSelection cap=' + (cap ? (cap.start + '..' + cap.end) : 'null'));
     if (cap){
       var sig = cap.start + '..' + cap.end;
       if (sig === krReportedSig && (now - krReportedAt) < 1500){
@@ -499,7 +498,7 @@ body {
       }
       krReportedSig = sig; krReportedAt = now;
       try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(cap.text, cap.start, cap.end); }
-      catch(e){ console.log('onSelection threw ' + e); }
+      catch(e){}
     }
     krLastRange = null; krLastText = '';
     var sel = window.getSelection();
