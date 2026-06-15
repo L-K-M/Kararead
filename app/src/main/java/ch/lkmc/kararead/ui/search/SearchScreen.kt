@@ -32,7 +32,6 @@ import ch.lkmc.kararead.ui.components.BookmarkList
 @Composable
 fun SearchScreen(
     onOpenReader: (String) -> Unit,
-    onOpenTag: (id: String, name: String) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -86,7 +85,7 @@ fun SearchScreen(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         tags.forEach { tag ->
                             AssistChip(
-                                onClick = { onOpenTag(tag.id, tag.name) },
+                                onClick = { viewModel.onQueryChange(tagQuery(tag.name)) },
                                 label = { Text("#${tag.name}") },
                             )
                         }
@@ -112,3 +111,7 @@ fun SearchScreen(
         }
     }
 }
+
+/** A Karakeep search expression for a tag; quote multi-word names. */
+private fun tagQuery(name: String): String =
+    if (name.any { it.isWhitespace() }) "#\"$name\"" else "#$name"

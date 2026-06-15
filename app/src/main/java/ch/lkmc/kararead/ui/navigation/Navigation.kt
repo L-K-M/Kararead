@@ -35,7 +35,6 @@ import ch.lkmc.kararead.ui.reader.ReaderScreen
 import ch.lkmc.kararead.ui.search.SearchScreen
 import ch.lkmc.kararead.ui.settings.SettingsScreen
 import ch.lkmc.kararead.ui.stats.StatsScreen
-import ch.lkmc.kararead.ui.tags.TagBookmarksScreen
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -46,13 +45,10 @@ object Routes {
     const val SETTINGS = "settings"
     const val READER = "reader/{bookmarkId}"
     const val LIST_DETAIL = "list/{listId}/{listName}"
-    const val TAG_DETAIL = "tag/{tagId}/{tagName}"
 
     fun reader(bookmarkId: String) = "reader/$bookmarkId"
     fun listDetail(listId: String, listName: String) =
         "list/$listId/${Uri.encode(listName)}"
-    fun tagDetail(tagId: String, tagName: String) =
-        "tag/$tagId/${Uri.encode(tagName)}"
 }
 
 private data class TopTab(val route: String, val label: String, val icon: ImageVector)
@@ -126,10 +122,7 @@ fun KararreadNavHost(startDestination: String) {
                 StatsScreen()
             }
             tabComposable(Routes.SEARCH, padding) {
-                SearchScreen(
-                    onOpenReader = { navController.navigate(Routes.reader(it)) },
-                    onOpenTag = { id, name -> navController.navigate(Routes.tagDetail(id, name)) },
-                )
+                SearchScreen(onOpenReader = { navController.navigate(Routes.reader(it)) })
             }
             tabComposable(Routes.SETTINGS, padding) {
                 SettingsScreen(
@@ -150,18 +143,6 @@ fun KararreadNavHost(startDestination: String) {
                 ListBookmarksScreen(
                     listId = listId,
                     listName = listName,
-                    onOpenReader = { navController.navigate(Routes.reader(it)) },
-                    onBack = { navController.popBackStack() },
-                )
-            }
-            composable(
-                route = Routes.TAG_DETAIL,
-                enterTransition = { slideIn() },
-                exitTransition = { slideOut() },
-            ) { entry ->
-                val tagName = Uri.decode(entry.arguments?.getString("tagName").orEmpty())
-                TagBookmarksScreen(
-                    tagName = tagName,
                     onOpenReader = { navController.navigate(Routes.reader(it)) },
                     onBack = { navController.popBackStack() },
                 )
