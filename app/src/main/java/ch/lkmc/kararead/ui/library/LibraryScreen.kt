@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -78,7 +78,7 @@ fun LibraryScreen(
                             val index = (0 until items.itemCount).random()
                             items[index]?.let { onOpenReader(it.id) }
                         }) {
-                            Icon(Icons.Filled.Casino, contentDescription = "Surprise me")
+                            Icon(Icons.Filled.Shuffle, contentDescription = "Surprise me")
                         }
                     }
                     IconButton(onClick = { sortMenuOpen = true }) {

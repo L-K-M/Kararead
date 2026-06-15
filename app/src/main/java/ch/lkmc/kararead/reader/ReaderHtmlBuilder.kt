@@ -254,8 +254,8 @@ body {
     var page = Math.max(40, doc.clientHeight - 64);
     window.scrollBy({ top: page * dir, left: 0, behavior: 'smooth' });
   };
-  // A tap in the reading column (not on a link, and not a text selection)
-  // toggles the app chrome. A tap on a highlight asks the host about it.
+  // A tap on a highlight asks the host about it. (Chrome toggling is handled
+  // natively via a gesture detector, which is more reliable than a JS click.)
   document.addEventListener('click', function(e){
     var n = e.target;
     while (n && n !== document.body) {
@@ -264,13 +264,8 @@ body {
         try { if (window.AndroidReader && AndroidReader.onHighlightTap) AndroidReader.onHighlightTap(id); } catch(err){}
         return;
       }
-      var tag = n.tagName;
-      if (tag === 'A' || tag === 'BUTTON' || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       n = n.parentNode;
     }
-    var sel = window.getSelection && window.getSelection().toString();
-    if (sel && sel.length > 0) return;
-    try { if (window.AndroidReader && AndroidReader.onTap) AndroidReader.onTap(); } catch(e){}
   }, false);
   ${highlightJs()}
   // Signal that the document is ready for progress restore.
