@@ -45,19 +45,24 @@ object ReaderHtmlBuilder {
     }
 
     /** Sanitize crawled HTML: keep rich structure, drop scripts/styles/iframes. */
-    private fun sanitize(html: String): String {
+    private fun sanitize(html: String, baseUri: String): String {
         val safelist = Safelist.relaxed()
             .addTags("figure", "figcaption", "h1", "h2", "section", "article", "mark", "hr")
             .addAttributes("img", "src", "alt", "title", "width", "height")
             .addAttributes("a", "href", "title")
             .addProtocols("img", "src", "http", "https", "data")
-        return Jsoup.clean(html, safelist)
+        // Pass the server origin as the base URI so Karakeep's *relative* asset
+        // paths (e.g. /api/assets/<id>) resolve to absolute https URLs and
+        // survive sanitization — otherwise protocol-restricted img[src] with no
+        // base resolves to nothing and the image is silently dropped before the
+        // WebView's auth-injecting interceptor ever sees it.
+        return Jsoup.clean(html, baseUri, safelist)
     }
 
-    fun build(article: ReaderArticle, prefs: ReaderPreferences): String {
+    fun build(article: ReaderArticle, prefs: ReaderPreferences, baseUri: String? = null): String {
         val palette = paletteFor(prefs.theme)
         val bm = article.bookmark
-        val body = article.htmlContent?.let { sanitize(it) }
+        val body = article.htmlContent?.let { sanitize(it, baseUri.orEmpty()) }
             ?: "<p class=\"kr-empty\">This article has no readable content yet. " +
             "It may still be processing on the server — try opening the original.</p>"
 
