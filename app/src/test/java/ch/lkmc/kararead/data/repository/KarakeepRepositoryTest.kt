@@ -5,6 +5,7 @@ import ch.lkmc.kararead.data.local.ReadingProgressDao
 import ch.lkmc.kararead.data.local.ReadingStatsDao
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.remote.KarakeepApi
+import ch.lkmc.kararead.reader.AssetLoader
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -19,6 +20,7 @@ class KarakeepRepositoryTest {
     private val progressDao = mockk<ReadingProgressDao>(relaxed = true)
     private val cacheDao = mockk<CachedArticleDao>(relaxed = true)
     private val statsDao = mockk<ReadingStatsDao>(relaxed = true)
+    private val assetLoader = mockk<AssetLoader>(relaxed = true)
 
     private lateinit var repo: KarakeepRepository
 
@@ -26,7 +28,7 @@ class KarakeepRepositoryTest {
     fun setUp() {
         every { apiProvider.api() } returns api
         every { apiProvider.assetUrl(any()) } returns null
-        repo = KarakeepRepository(apiProvider, progressDao, cacheDao, statsDao)
+        repo = KarakeepRepository(apiProvider, progressDao, cacheDao, statsDao, assetLoader)
     }
 
     @Test

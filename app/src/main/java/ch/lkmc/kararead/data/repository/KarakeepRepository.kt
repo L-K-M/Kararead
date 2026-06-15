@@ -24,6 +24,7 @@ import ch.lkmc.kararead.data.remote.toCacheEntity
 import ch.lkmc.kararead.data.remote.toDomain
 import ch.lkmc.kararead.data.remote.toReaderArticle
 import ch.lkmc.kararead.data.paging.BookmarksPagingSource
+import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.util.computeReadingStats
 import kotlinx.coroutines.flow.Flow
@@ -44,6 +45,7 @@ class KarakeepRepository @Inject constructor(
     private val progressDao: ReadingProgressDao,
     private val cacheDao: CachedArticleDao,
     private val statsDao: ReadingStatsDao,
+    private val assetLoader: AssetLoader,
 ) {
     private fun api(): KarakeepApi = apiProvider.api()
     private val assetResolver: (String) -> String? = { apiProvider.assetUrl(it) }
@@ -245,10 +247,15 @@ class KarakeepRepository @Inject constructor(
      */
     suspend fun syncOffline(source: BookmarkSource, limit: Int): Int {
         val wanted = firstPage(source, limit)
+        val origin = apiProvider.serverOrigin
         var ready = 0
         for (bm in wanted) {
-            val ok = runCatching { getArticle(bm.id) }.isSuccess
-            if (ok) ready++
+            val article = runCatching { getArticle(bm.id) }.getOrNull()
+            if (article != null) {
+                ready++
+                // Download the article's images too, so it reads fully offline.
+                runCatching { assetLoader.prefetchImages(article.htmlContent, origin) }
+            }
         }
         return ready
     }
