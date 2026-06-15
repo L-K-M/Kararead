@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 
 /** State of the browse-by-tag section in the empty search view. */
@@ -51,16 +52,21 @@ class SearchViewModel @Inject constructor(
     fun loadTags() {
         _tags.value = _tags.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            runCatching { repository.getTags() }
+            // Bound the wait so a non-returning request can't leave the UI
+            // spinning forever; surface a concrete error (with the exception
+            // type) so failures are visible instead of swallowed.
+            runCatching { withTimeout(20_000) { repository.getTags() } }
                 .onSuccess { list ->
                     _tags.value = TagsUi(loading = false, tags = list, error = null)
                 }
                 .onFailure { e ->
-                    _tags.value = TagsUi(
-                        loading = false,
-                        tags = emptyList(),
-                        error = e.message ?: "Couldn't load tags.",
-                    )
+                    android.util.Log.w("SearchViewModel", "Loading tags failed", e)
+                    val reason = when (e) {
+                        is kotlinx.coroutines.TimeoutCancellationException ->
+                            "timed out after 20s"
+                        else -> e.message ?: e::class.simpleName ?: "unknown error"
+                    }
+                    _tags.value = TagsUi(loading = false, tags = emptyList(), error = reason)
                 }
         }
     }
