@@ -29,6 +29,8 @@ class AssetLoader @Inject constructor(
     @ApplicationContext context: Context,
     private val apiProvider: ApiProvider,
 ) {
+    private val assets = context.assets
+
     private val cache = Cache(
         directory = context.cacheDir.resolve("reader_images"),
         maxSize = 150L * 1024 * 1024,
@@ -41,8 +43,9 @@ class AssetLoader @Inject constructor(
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    /** WebView resource hook: fetch+cache when online, serve from cache when offline. */
+    /** WebView resource hook: bundled fonts, then images (cached). */
     fun intercept(url: String): WebResourceResponse? {
+        fontAsset(url)?.let { return it }
         if (!url.startsWith("http://") && !url.startsWith("https://")) return null
         val builder = requestFor(url)
         return try {
@@ -80,6 +83,18 @@ class AssetLoader @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Serve a bundled reader font referenced as `…/__krfont/<file>`. */
+    private fun fontAsset(url: String): WebResourceResponse? {
+        val marker = "/__krfont/"
+        val i = url.indexOf(marker)
+        if (i < 0) return null
+        val name = url.substring(i + marker.length).substringBefore('?').substringBefore('#')
+        if (name.isEmpty() || name.contains('/')) return null
+        return runCatching {
+            WebResourceResponse("font/ttf", null, assets.open("fonts/$name"))
+        }.getOrNull()
     }
 
     private fun requestFor(url: String): Request.Builder {

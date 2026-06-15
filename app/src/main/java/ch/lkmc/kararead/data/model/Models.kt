@@ -91,7 +91,7 @@ data class ConnectionSettings(
 /** Reader typography & appearance preferences. */
 data class ReaderPreferences(
     val theme: ReaderTheme = ReaderTheme.LIGHT,
-    val font: ReaderFont = ReaderFont.SERIF,
+    val font: ReaderFont = ReaderFont.LITERATA,
     val fontScale: Float = 1.0f,        // 0.7 .. 2.0 multiplier
     val lineHeight: Float = 1.6f,       // unitless
     val horizontalMargin: Int = 20,     // dp, mapped to px in CSS
@@ -104,19 +104,21 @@ data class ReaderPreferences(
 enum class ReaderTheme { LIGHT, SEPIA, DARK, BLACK }
 
 /**
- * Reader typeface options. The stacks lean on families Android's WebView ships
- * (Noto Serif, Roboto + its condensed/casual variants, monospace) so each looks
- * distinct without bundling font files.
+ * Reader typeface options. The first eight are OFL-licensed faces bundled with
+ * the app (see assets/fonts), chosen for on-screen long-form reading; System and
+ * Mono fall back to the platform.
  */
 enum class ReaderFont(val cssStack: String) {
-    SERIF("Georgia, 'Noto Serif', 'Times New Roman', serif"),
-    SANS("'Roboto', 'Helvetica Neue', sans-serif"),
-    CONDENSED("'Roboto Condensed', 'sans-serif-condensed', sans-serif"),
-    SLAB("'Roboto Slab', 'Rockwell', Georgia, serif"),
-    HUMANIST("'Optima', 'Gill Sans', 'Segoe UI', sans-serif"),
-    MONO("'JetBrains Mono', 'Courier New', monospace"),
-    CASUAL("'casual', 'Comic Sans MS', cursive"),
+    LITERATA("'Literata', Georgia, serif"),
+    LORA("'Lora', Georgia, serif"),
+    SOURCE_SERIF("'Source Serif 4', Georgia, serif"),
+    NEWSREADER("'Newsreader', Georgia, serif"),
+    CRIMSON("'Crimson Pro', Georgia, serif"),
+    BITTER("'Bitter', Georgia, serif"),
+    INTER("'Inter', 'Roboto', sans-serif"),
+    ATKINSON("'Atkinson Hyperlegible', 'Roboto', sans-serif"),
     SYSTEM("system-ui, sans-serif"),
+    MONO("'JetBrains Mono', 'Courier New', monospace"),
 }
 
 enum class AppThemeMode { SYSTEM, LIGHT, DARK }

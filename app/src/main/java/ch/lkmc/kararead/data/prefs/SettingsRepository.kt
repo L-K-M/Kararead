@@ -108,7 +108,7 @@ class SettingsRepository @Inject constructor(
             theme = p[Keys.READER_THEME]?.let { runCatching { ReaderTheme.valueOf(it) }.getOrNull() }
                 ?: ReaderTheme.LIGHT,
             font = p[Keys.READER_FONT]?.let { runCatching { ReaderFont.valueOf(it) }.getOrNull() }
-                ?: ReaderFont.SERIF,
+                ?: ReaderFont.LITERATA,
             fontScale = p[Keys.FONT_SCALE] ?: 1.0f,
             lineHeight = p[Keys.LINE_HEIGHT] ?: 1.6f,
             horizontalMargin = p[Keys.MARGIN] ?: 20,

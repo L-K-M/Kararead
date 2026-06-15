@@ -42,16 +42,25 @@ class ReaderPager {
 /** A WebView that adds a "Highlight" item to the text-selection action menu. */
 private class HighlightWebView(context: Context) : WebView(context) {
     var onHighlightRequested: (() -> Unit)? = null
-    var onSingleTap: (() -> Unit)? = null
+    /** Confirmed single tap by horizontal zone: -1 left, 0 centre, +1 right. */
+    var onTapZone: ((Int) -> Unit)? = null
 
-    // A confirmed single tap (not a scroll, fling, double-tap or long-press)
-    // toggles the reading chrome. Native detection is far more reliable than a
-    // JS click listener, which the WebView's own gesture handling can swallow.
+    // A confirmed single tap (not a scroll, fling, double-tap or long-press).
+    // Left/right thirds page; the centre toggles the reading chrome. Native
+    // detection is far more reliable than a JS click listener, which the
+    // WebView's own gesture handling can swallow.
     private val tapDetector = android.view.GestureDetector(
         context,
         object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
-                onSingleTap?.invoke()
+                val w = width
+                val zone = when {
+                    w <= 0 -> 0
+                    e.x < w * 0.25f -> -1
+                    e.x > w * 0.75f -> 1
+                    else -> 0
+                }
+                onTapZone?.invoke(zone)
                 return false
             }
         },
@@ -140,7 +149,13 @@ fun ReaderWebView(
         modifier = modifier,
         factory = { ctx ->
             HighlightWebView(ctx).apply {
-                onSingleTap = onTap
+                onTapZone = { zone ->
+                    when (zone) {
+                        -1 -> pager.page(-1) // tap left: page back
+                        1 -> pager.page(1)   // tap right: page forward
+                        else -> onTap()      // centre: toggle chrome
+                    }
+                }
                 onHighlightRequested = {
                     evaluateJavascript("window.krCaptureSelection && window.krCaptureSelection();", null)
                 }

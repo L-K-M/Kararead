@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -61,6 +63,7 @@ fun ReaderControlsSheet(
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -213,21 +216,23 @@ private fun themeLabel(theme: ReaderTheme) = when (theme) {
 }
 
 private fun fontLabel(font: ReaderFont) = when (font) {
-    ReaderFont.SERIF -> "Serif"
-    ReaderFont.SANS -> "Sans"
-    ReaderFont.CONDENSED -> "Condensed"
-    ReaderFont.SLAB -> "Slab"
-    ReaderFont.HUMANIST -> "Humanist"
-    ReaderFont.MONO -> "Mono"
-    ReaderFont.CASUAL -> "Casual"
+    ReaderFont.LITERATA -> "Literata"
+    ReaderFont.LORA -> "Lora"
+    ReaderFont.SOURCE_SERIF -> "Source Serif"
+    ReaderFont.NEWSREADER -> "Newsreader"
+    ReaderFont.CRIMSON -> "Crimson"
+    ReaderFont.BITTER -> "Bitter"
+    ReaderFont.INTER -> "Inter"
+    ReaderFont.ATKINSON -> "Atkinson"
     ReaderFont.SYSTEM -> "System"
+    ReaderFont.MONO -> "Mono"
 }
 
-/** Closest Compose family for chip/preview rendering (the reader itself uses the CSS stack). */
+/** Closest Compose family for chip/preview rendering (the reader itself uses the bundled font). */
 private fun composeFamily(font: ReaderFont): FontFamily = when (font) {
-    ReaderFont.SERIF, ReaderFont.SLAB -> FontFamily.Serif
+    ReaderFont.LITERATA, ReaderFont.LORA, ReaderFont.SOURCE_SERIF,
+    ReaderFont.NEWSREADER, ReaderFont.CRIMSON, ReaderFont.BITTER -> FontFamily.Serif
     ReaderFont.MONO -> FontFamily.Monospace
-    ReaderFont.CASUAL -> FontFamily.Cursive
     else -> FontFamily.SansSerif
 }
 

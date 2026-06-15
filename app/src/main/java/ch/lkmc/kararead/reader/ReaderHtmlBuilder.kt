@@ -80,6 +80,7 @@ object ReaderHtmlBuilder {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
 <style>
+${fontFaceCss()}
 ${baseCss()}
 ${variableCss(palette, prefs)}
 </style>
@@ -145,6 +146,33 @@ ${progressScript()}
   if (window.krSetPaged) window.krSetPaged(${prefs.pagedMode});
 })();
         """.trimIndent()
+    }
+
+    /**
+     * @font-face for the bundled reading typefaces. Served by [AssetLoader] via
+     * the same-origin `/__krfont/<file>` path so there are no cross-origin/file
+     * restrictions. Variable fonts declare a 100–900 weight range (one file);
+     * Atkinson Hyperlegible ships static regular + bold.
+     */
+    private fun fontFaceCss(): String {
+        fun variable(family: String, file: String) =
+            "@font-face{font-family:'$family';src:url('/__krfont/$file') format('truetype');" +
+                "font-weight:100 900;font-style:normal;font-display:swap;}"
+        return buildString {
+            append(variable("Literata", "Literata.ttf"))
+            append(variable("Lora", "Lora.ttf"))
+            append(variable("Source Serif 4", "SourceSerif4.ttf"))
+            append(variable("Newsreader", "Newsreader.ttf"))
+            append(variable("Crimson Pro", "CrimsonPro.ttf"))
+            append(variable("Bitter", "Bitter.ttf"))
+            append(variable("Inter", "Inter.ttf"))
+            append(
+                "@font-face{font-family:'Atkinson Hyperlegible';src:url('/__krfont/Atkinson-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap;}",
+            )
+            append(
+                "@font-face{font-family:'Atkinson Hyperlegible';src:url('/__krfont/Atkinson-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap;}",
+            )
+        }
     }
 
     private fun baseCss(): String = """
@@ -475,20 +503,34 @@ body.kr-paged .kr-footer { display: none; }
     }
     return total + offset;
   }
-  // Called from the native "Highlight" selection action.
-  window.krCaptureSelection = function(){
+  // Capture the current selection's text-offsets into the article, or null.
+  function krReadSelection(){
     var sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
-    var root = krRoot(); if (!root) return;
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+    var root = krRoot(); if (!root) return null;
     var range = sel.getRangeAt(0);
-    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return;
+    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
     var start = krTextOffset(root, range.startContainer, range.startOffset);
     var end = krTextOffset(root, range.endContainer, range.endOffset);
     var text = sel.toString();
-    if (end > start && text.trim().length > 0){
-      try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(text, start, end); } catch(e){}
+    if (end > start && text.trim().length > 0) return { start: start, end: end, text: text };
+    return null;
+  }
+  // Remember the last real selection — the action-mode "Highlight" item can
+  // clear the live selection before our async capture runs.
+  var krLastSel = null;
+  document.addEventListener('selectionchange', function(){
+    var s = krReadSelection();
+    if (s) krLastSel = s;
+  });
+  // Called from the native "Highlight" selection action.
+  window.krCaptureSelection = function(){
+    var cap = krReadSelection() || krLastSel;
+    if (cap){
+      try { if (window.AndroidReader && AndroidReader.onSelection) AndroidReader.onSelection(cap.text, cap.start, cap.end); } catch(e){}
     }
-    sel.removeAllRanges();
+    krLastSel = null;
+    var sel = window.getSelection(); if (sel) sel.removeAllRanges();
   };
   function krUnwrap(root){
     var marks = root.querySelectorAll('mark.kr-hl');

@@ -32,9 +32,11 @@ Kararead is that reader. It talks to your existing Karakeep server and turns you
   stylesheet: comfortable measure, real blockquotes, code blocks, figures and
   images.
 - **Reading themes.** Light, Sepia, Dark, and a true-black OLED mode.
-- **Typography you control.** Eight typefaces (serif, sans, condensed, slab,
-  humanist, mono, casual, system), text size, line spacing, margins, and
-  justification — applied live, with a preview right in the settings sheet.
+- **Typography you control.** Ten typefaces — eight OFL fonts bundled for
+  offline reading (Literata, Lora, Source Serif 4, Newsreader, Crimson Pro,
+  Bitter, Inter, Atkinson Hyperlegible) plus System and Mono — text size, line
+  spacing, margins, and justification, applied live with a preview in the
+  settings sheet.
 - **Resume where you left off.** Per-article scroll position is saved locally and
   restored automatically, with a progress indicator on every card.
 - **Frictionless triage.** Swipe to archive (= mark read) or favourite; undo from

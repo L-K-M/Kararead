@@ -1,0 +1,13 @@
+Bundled reading typefaces — all licensed under the SIL Open Font License 1.1
+(see OFL.txt). Sourced from the Google Fonts project (github.com/google/fonts).
+
+- Literata        © 2018 The Literata Project Authors (Type Network)
+- Lora            © 2011 The Lora Project Authors (Cyreal)
+- Source Serif 4  © 2014-2021 Adobe (Frank Grießhammer)
+- Newsreader      © 2019 The Newsreader Project Authors (Production Type)
+- Crimson Pro     © 2018 The Crimson Pro Project Authors (Sebastian Kosch, Jacques Le Bailly)
+- Bitter          © 2011 The Bitter Project Authors (Huerta Tipográfica)
+- Inter           © 2016-2020 The Inter Project Authors (Rasmus Andersson)
+- Atkinson Hyperlegible © 2020 Braille Institute of America, Inc.
+
+The full license text applies to each of the above; see OFL.txt.
