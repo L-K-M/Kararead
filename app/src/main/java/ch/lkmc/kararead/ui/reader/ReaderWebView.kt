@@ -28,8 +28,14 @@ import ch.lkmc.kararead.reader.ReaderHtmlBuilder
  */
 class ReaderPager {
     internal var pageBy: ((Int) -> Unit)? = null
+    internal var scrollToFraction: ((Float) -> Unit)? = null
     fun page(direction: Int) {
         pageBy?.invoke(direction)
+    }
+
+    /** Smoothly scroll the article to a 0..1 position (used to follow narration). */
+    fun scrollTo(fraction: Float) {
+        scrollToFraction?.invoke(fraction)
     }
 }
 
@@ -160,6 +166,9 @@ fun ReaderWebView(
                 }
                 addJavascriptInterface(bridge, "AndroidReader")
                 pager.pageBy = { dir -> evaluateJavascript("window.krPageBy && window.krPageBy($dir);", null) }
+                pager.scrollToFraction = { f ->
+                    evaluateJavascript("window.krSmoothToFraction && window.krSmoothToFraction($f);", null)
+                }
 
                 webViewClient = object : WebViewClient() {
                     override fun shouldInterceptRequest(
@@ -198,6 +207,7 @@ fun ReaderWebView(
         },
         onRelease = {
             pager.pageBy = null
+            pager.scrollToFraction = null
             it.destroy()
         },
     )

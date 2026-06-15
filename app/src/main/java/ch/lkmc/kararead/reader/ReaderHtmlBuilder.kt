@@ -334,6 +334,13 @@ body.kr-paged .kr-footer { display: none; }
   };
   // Seed the last-known reading fraction (used to pick the page on restore).
   window.krSeedFraction = function(f){ var n = parseFloat(f); if (!isNaN(n)) krLastFraction = n; };
+  // Smoothly move to a 0..1 position — used to follow narration.
+  window.krSmoothToFraction = function(f){
+    krStopSticky();
+    if (krPaged){ krGoToPage(Math.round(f * ((krPages || 1) - 1))); return; }
+    var doc = document.documentElement;
+    window.scrollTo({ top: (doc.scrollHeight - doc.clientHeight) * f, left: 0, behavior: 'smooth' });
+  };
   window.krSetPaged = function(on){
     on = !!on;
     if (on === krPaged){ if (on){ krMeasurePages(); krRenderPage(); } return; }

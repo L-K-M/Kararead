@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -64,6 +65,10 @@ class ReaderViewModel @Inject constructor(
 
     private val _highlights = MutableStateFlow<List<Highlight>>(emptyList())
     val highlights: StateFlow<List<Highlight>> = _highlights
+
+    // Transient user-facing messages (e.g. highlight saved / failed).
+    private val _messages = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.BUFFERED)
+    val messages = _messages.receiveAsFlow()
 
     /** Highlights serialized as `[{id,start,end}]` for the WebView renderer. */
     val highlightsJson: StateFlow<String> =
@@ -212,7 +217,11 @@ class ReaderViewModel @Inject constructor(
         if (end <= start) return
         viewModelScope.launch {
             runCatching { repository.createHighlight(bookmarkId, start, end, text.trim()) }
-                .onSuccess { created -> _highlights.update { it + created } }
+                .onSuccess { created ->
+                    _highlights.update { it + created }
+                    _messages.trySend("Highlighted")
+                }
+                .onFailure { _messages.trySend("Couldn't save highlight — try again") }
         }
     }
 
@@ -240,7 +249,7 @@ class ReaderViewModel @Inject constructor(
     /** Whether the current article has readable text to narrate. */
     val canListen: Boolean get() = !_state.value.article?.textContent.isNullOrBlank()
 
-    fun listen() = speaker.start(_state.value.article?.textContent)
+    fun listen() = speaker.start(_state.value.article?.textContent, _state.value.progress)
     fun toggleSpeech() = speaker.togglePlayPause()
     fun skipSpeech(delta: Int) = speaker.skipBy(delta)
     fun stopSpeech() = speaker.stop()

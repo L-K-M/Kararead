@@ -97,6 +97,50 @@ fun ReaderScreen(
     var showVoicePicker by remember { mutableStateOf(false) }
     val pager = remember { ReaderPager() }
 
+    // Immersive reading: the system status bar follows the reader chrome, so it
+    // hides while you read and returns on tap. Restore it when leaving.
+    val window = remember(view) {
+        var c: android.content.Context? = view.context
+        var w: android.view.Window? = null
+        while (c is android.content.ContextWrapper) {
+            if (c is android.app.Activity) { w = c.window; break }
+            c = c.baseContext
+        }
+        w
+    }
+    androidx.compose.runtime.DisposableEffect(window) {
+        onDispose {
+            window?.let {
+                androidx.core.view.WindowCompat.getInsetsController(it, view)
+                    .show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+            }
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(chromeVisible, window) {
+        window?.let {
+            val controller = androidx.core.view.WindowCompat.getInsetsController(it, view)
+            controller.systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            val bars = androidx.core.view.WindowInsetsCompat.Type.statusBars()
+            if (chromeVisible) controller.show(bars) else controller.hide(bars)
+        }
+    }
+
+    // Transient feedback (e.g. highlight saved / failed).
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.messages.collect {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Follow narration: keep the article scrolled to roughly the sentence being
+    // spoken, so listening and reading stay in sync.
+    androidx.compose.runtime.LaunchedEffect(speech.index, speech.speaking, speech.total) {
+        if (speech.speaking && speech.total > 1) {
+            pager.scrollTo(speech.index / (speech.total - 1f))
+        }
+    }
+
     // B5: advance to the next unread article (optionally marking this one read).
     val advance: (Boolean) -> Unit = { archiveFirst ->
         scope.launch {
@@ -170,7 +214,11 @@ fun ReaderScreen(
                     initialAnchor = state.initialAnchor,
                     assetLoader = viewModel.assetLoader,
                     onProgress = viewModel::onProgress,
-                    onScrollDirection = { up -> chromeVisible = up || state.progress < 0.05f },
+                    onScrollDirection = { up ->
+                        // Auto-hide while reading down; reveal is tap-only (so a
+                        // scroll-up while reading doesn't pop the chrome back).
+                        if (!up) chromeVisible = false
+                    },
                     onTap = { chromeVisible = !chromeVisible },
                     onSelection = { text, start, end -> viewModel.addHighlight(text, start, end) },
                     onHighlightTap = { id -> pendingDeleteId = id },

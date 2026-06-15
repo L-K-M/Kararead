@@ -93,6 +93,9 @@ class ArticleSpeaker @Inject constructor(
                         detail = v.name,
                     )
                 }
+                // Some engines expose multiple voices with the same name; keep one
+                // per id so the picker's list keys stay unique (else it crashes).
+                .distinctBy { it.id }
         }.getOrDefault(emptyList())
         _voices.value = list
     }
@@ -130,15 +133,20 @@ class ArticleSpeaker @Inject constructor(
         }
     }
 
-    /** Begin (or restart) narration of [text]. */
-    fun start(text: String?) {
+    /**
+     * Begin (or restart) narration of [text], starting near the reader's current
+     * position ([startFraction], 0..1) rather than always at the top.
+     */
+    fun start(text: String?, startFraction: Float = 0f) {
         val prepared = chunkText(text)
         if (prepared.isEmpty()) {
             _state.update { it.copy(failed = true) }
             return
         }
         chunks = prepared
-        val begin = { enqueueFrom(0) }
+        val startIndex = (startFraction.coerceIn(0f, 1f) * prepared.lastIndex)
+            .toInt().coerceIn(0, prepared.lastIndex)
+        val begin = { enqueueFrom(startIndex) }
         if (ready) begin() else { pendingStart = begin; ensureEngine() }
     }
 
