@@ -149,10 +149,10 @@ fun ReaderWebView(
 
     val bridge: ReaderBridge = remember {
         ReaderBridge(
-            onProgress = onProgress,
+            emitProgress = onProgress,
             onScrollDirection = onScrollDirection,
-            onSelection = onSelection,
-            onHighlightTap = onHighlightTap,
+            emitSelection = onSelection,
+            emitHighlightTap = onHighlightTap,
         )
     }
 
@@ -325,26 +325,32 @@ private class AppliedReaderState {
     var appliedHighlights: String? = null
 }
 
-/** JS → Android bridge for scroll progress. */
+/**
+ * JS → Android bridge. The `@JavascriptInterface` methods below are what the
+ * page calls (`AndroidReader.onProgress(...)`, `.onSelection(...)`, etc.), so
+ * their names are fixed. The Kotlin callbacks are deliberately named `emit*` to
+ * avoid colliding with those method names — a same-name, same-signature property
+ * would be shadowed by the member function and the dispatch would recurse into
+ * itself instead of reaching the host.
+ */
 internal class ReaderBridge(
-    private val onProgress: (fraction: Float, anchor: String) -> Unit,
+    private val emitProgress: (fraction: Float, anchor: String) -> Unit,
     private val onScrollDirection: (Boolean) -> Unit,
-    private val onSelection: (text: String, start: Int, end: Int) -> Unit,
-    private val onHighlightTap: (id: String) -> Unit,
+    private val emitSelection: (text: String, start: Int, end: Int) -> Unit,
+    private val emitHighlightTap: (id: String) -> Unit,
 ) {
     var onReady: (() -> Unit)? = null
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
-    // Belt-and-suspenders against OEM selection toolbars that re-fire the capture
-    // (the JS side guards too): drop a repeat of the same range seen moments ago
-    // before it reaches the view model.
+    // Drop an accidental rapid repeat of the same range (e.g. a double-tap on
+    // "Highlight") before it reaches the view model.
     private var lastSelSig: String? = null
     private var lastSelAt = 0L
 
     @JavascriptInterface
     fun onProgress(fraction: Double, anchor: String, up: Boolean) {
         mainHandler.post {
-            onProgress(fraction.toFloat(), anchor)
+            emitProgress(fraction.toFloat(), anchor)
             onScrollDirection(up)
         }
     }
@@ -362,11 +368,11 @@ internal class ReaderBridge(
         lastSelSig = sig
         lastSelAt = now
         android.util.Log.d("KrHighlight", "bridge.onSelection start=$start end=$end len=${text.length}")
-        mainHandler.post { onSelection(text, start, end) }
+        mainHandler.post { emitSelection(text, start, end) }
     }
 
     @JavascriptInterface
     fun onHighlightTap(id: String) {
-        mainHandler.post { onHighlightTap(id) }
+        mainHandler.post { emitHighlightTap(id) }
     }
 }
