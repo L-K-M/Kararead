@@ -51,6 +51,9 @@ fun SettingsScreen(
         ) {
             SectionHeader("Connection")
             SettingRow(title = "Server", subtitle = state.serverUrl.ifBlank { "Not connected" })
+            if (state.fallbackUrl.isNotBlank()) {
+                SettingRow(title = "Fallback server", subtitle = state.fallbackUrl)
+            }
             SettingRow(
                 title = "Read-later list",
                 subtitle = state.readLaterName ?: "Pick one in the Lists tab",

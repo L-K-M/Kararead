@@ -17,6 +17,7 @@ import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.data.model.ReaderTheme
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -33,6 +34,7 @@ class SettingsRepository @Inject constructor(
 ) {
     private object Keys {
         val SERVER_URL = stringPreferencesKey("server_url")
+        val FALLBACK_URL = stringPreferencesKey("fallback_url")
         val API_KEY = stringPreferencesKey("api_key")
         val READER_THEME = stringPreferencesKey("reader_theme")
         val READER_FONT = stringPreferencesKey("reader_font")
@@ -49,29 +51,49 @@ class SettingsRepository @Inject constructor(
         val READ_LATER_LIST_NAME = stringPreferencesKey("read_later_list_name")
     }
 
-    val connection: Flow<ConnectionSettings> = combineStores()
-
-    private fun combineStores(): Flow<ConnectionSettings> =
-        context.settingsStore.data.map { prefs ->
-            val url = prefs[Keys.SERVER_URL] ?: ""
-            val key = context.secretsStore.data.first()[Keys.API_KEY] ?: ""
-            ConnectionSettings(url, key)
+    // Combine BOTH stores so the flow re-emits when either the URL/fallback or
+    // the (separately stored) API key changes. Reading the key inside a map over
+    // only the settings store would miss key writes — which left the API client
+    // un-configured right after a first sign-in ("Not connected").
+    val connection: Flow<ConnectionSettings> =
+        combine(context.settingsStore.data, context.secretsStore.data) { prefs, secrets ->
+            ConnectionSettings(
+                serverUrl = prefs[Keys.SERVER_URL] ?: "",
+                apiKey = secrets[Keys.API_KEY] ?: "",
+                fallbackUrl = prefs[Keys.FALLBACK_URL] ?: "",
+            )
         }
 
     suspend fun connectionOnce(): ConnectionSettings {
-        val url = context.settingsStore.data.first()[Keys.SERVER_URL] ?: ""
+        val prefs = context.settingsStore.data.first()
         val key = context.secretsStore.data.first()[Keys.API_KEY] ?: ""
-        return ConnectionSettings(url, key)
+        return ConnectionSettings(
+            serverUrl = prefs[Keys.SERVER_URL] ?: "",
+            apiKey = key,
+            fallbackUrl = prefs[Keys.FALLBACK_URL] ?: "",
+        )
     }
 
     suspend fun saveConnection(settings: ConnectionSettings) {
-        context.settingsStore.edit { it[Keys.SERVER_URL] = settings.serverUrl }
+        // Write the secret first so the combined flow's final emission (driven by
+        // the settings-store write) already carries a complete, ready connection.
         context.secretsStore.edit { it[Keys.API_KEY] = settings.apiKey }
+        context.settingsStore.edit {
+            it[Keys.SERVER_URL] = settings.serverUrl
+            if (settings.fallbackUrl.isBlank()) {
+                it.remove(Keys.FALLBACK_URL)
+            } else {
+                it[Keys.FALLBACK_URL] = settings.fallbackUrl
+            }
+        }
     }
 
     suspend fun clearConnection() {
-        context.settingsStore.edit { it.remove(Keys.SERVER_URL) }
         context.secretsStore.edit { it.remove(Keys.API_KEY) }
+        context.settingsStore.edit {
+            it.remove(Keys.SERVER_URL)
+            it.remove(Keys.FALLBACK_URL)
+        }
     }
 
     val readerPreferences: Flow<ReaderPreferences> = context.settingsStore.data.map { p ->

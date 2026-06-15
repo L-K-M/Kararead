@@ -79,6 +79,20 @@ fun OnboardingScreen(
         )
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
+            value = state.fallbackUrl,
+            onValueChange = viewModel::onFallbackUrlChange,
+            label = { Text("Fallback URL (optional)") },
+            placeholder = { Text("http://intranet.local:3000") },
+            singleLine = true,
+            supportingText = { Text("Tried automatically when the main server is unreachable.") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                imeAction = ImeAction.Next,
+            ),
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
             value = state.apiKey,
             onValueChange = viewModel::onApiKeyChange,
             label = { Text("API key") },

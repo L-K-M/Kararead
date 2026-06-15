@@ -78,8 +78,14 @@ data class Highlight(
 data class CurrentUser(val id: String, val name: String?, val email: String?)
 
 /** Connection settings the user supplies during onboarding. */
-data class ConnectionSettings(val serverUrl: String, val apiKey: String) {
+data class ConnectionSettings(
+    val serverUrl: String,
+    val apiKey: String,
+    /** Optional second server tried automatically when the main one is unreachable. */
+    val fallbackUrl: String = "",
+) {
     val isComplete: Boolean get() = serverUrl.isNotBlank() && apiKey.isNotBlank()
+    val hasFallback: Boolean get() = fallbackUrl.isNotBlank()
 }
 
 /** Reader typography & appearance preferences. */
