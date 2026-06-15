@@ -61,6 +61,9 @@ class ReaderViewModel @Inject constructor(
     val ttsVoiceId: StateFlow<String?> =
         settings.ttsVoice.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    val ttsRate: StateFlow<Float> =
+        settings.ttsRate.stateIn(viewModelScope, SharingStarted.Eagerly, 1.0f)
+
     private val bookmarkId: String = savedStateHandle.get<String>("bookmarkId").orEmpty()
 
     private val _highlights = MutableStateFlow<List<Highlight>>(emptyList())
@@ -113,6 +116,10 @@ class ReaderViewModel @Inject constructor(
         // first "Listen" already uses it.
         viewModelScope.launch {
             settings.ttsVoice.collect { speaker.preferredVoiceId = it }
+        }
+        // Likewise for the narration speed.
+        viewModelScope.launch {
+            settings.ttsRate.collect { speaker.speechRate = it }
         }
     }
 
@@ -256,6 +263,11 @@ class ReaderViewModel @Inject constructor(
     fun setVoice(id: String) {
         speaker.setVoice(id)
         viewModelScope.launch { settings.setTtsVoice(id) }
+    }
+
+    fun setSpeechRate(rate: Float) {
+        speaker.changeSpeechRate(rate)
+        viewModelScope.launch { settings.setTtsRate(rate) }
     }
 
     // --- Next in queue (auto-advance) ---
