@@ -98,7 +98,6 @@ data class ReaderPreferences(
     val justify: Boolean = false,
     val keepScreenOn: Boolean = false,
     val volumeKeyPaging: Boolean = true,
-    val pagedMode: Boolean = false,
 )
 
 enum class ReaderTheme { LIGHT, SEPIA, DARK, BLACK }

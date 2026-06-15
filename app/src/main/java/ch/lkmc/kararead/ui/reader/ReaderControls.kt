@@ -56,7 +56,6 @@ fun ReaderControlsSheet(
     onJustify: (Boolean) -> Unit,
     onKeepScreenOn: (Boolean) -> Unit,
     onVolumeKeyPaging: (Boolean) -> Unit,
-    onPagedMode: (Boolean) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val fontFamilies = rememberReaderFontFamilies()
@@ -129,7 +128,6 @@ fun ReaderControlsSheet(
                 valueText = "${prefs.horizontalMargin}",
             )
 
-            ToggleRow("Paged reading (swipe to turn)", prefs.pagedMode, onPagedMode)
             ToggleRow("Justify text", prefs.justify, onJustify)
             ToggleRow("Keep screen on", prefs.keepScreenOn, onKeepScreenOn)
             ToggleRow("Volume keys turn pages", prefs.volumeKeyPaging, onVolumeKeyPaging)

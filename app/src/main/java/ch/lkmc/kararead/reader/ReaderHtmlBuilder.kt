@@ -143,7 +143,6 @@ ${progressScript()}
   r.setProperty('--kr-margin', '${prefs.horizontalMargin}px');
   r.setProperty('--kr-align', '${if (prefs.justify) "justify" else "start"}');
   document.documentElement.style.colorScheme = '${palette.scheme}';
-  if (window.krSetPaged) window.krSetPaged(${prefs.pagedMode});
 })();
         """.trimIndent()
     }
@@ -255,22 +254,6 @@ body {
 .kr-empty { color: var(--kr-secondary); font-style: italic; }
 .kr-footer { color: var(--kr-secondary); text-align: center; margin-top: 3em; font-size: .8em; letter-spacing: .15em; }
 ::selection { background: color-mix(in srgb, var(--kr-link) 30%, transparent); }
-
-/* Paged reading mode: lock the viewport and move the article up by whole
-   screenfuls (translateY). Robust across arbitrary article markup — content
-   always renders; pages just advance one screen at a time. */
-.kr-page-counter {
-  position: fixed; left: 0; right: 0; bottom: 4px; text-align: center;
-  font-size: 12px; color: var(--kr-secondary); pointer-events: none;
-  font-family: -apple-system, 'Roboto', sans-serif;
-}
-body.kr-paged { overflow: hidden; height: 100vh; }
-body.kr-paged #kr-content {
-  transform: translateY(var(--kr-page-y, 0px));
-  transition: transform .2s ease;
-  padding-bottom: 24px;
-}
-body.kr-paged .kr-footer { display: none; }
     """.trimIndent()
 
     /** Reports scroll fraction to the Android host; exposes restore() & applyPrefs(). */
@@ -337,85 +320,12 @@ body.kr-paged .kr-footer { display: none; }
     });
   }, { passive: true });
 
-  // --- Paged reading mode (vertical screenfuls; swipe/tap/volume to turn) ---
-  var krPaged = false, krPage = 0, krPages = 1;
-  function krPageH(){ return window.innerHeight; }
-  function krMeasurePages(){
-    var c = document.getElementById('kr-content'); if (!c) return;
-    krPages = Math.max(1, Math.ceil(c.scrollHeight / krPageH()));
-    krPage = Math.min(krPages - 1, Math.max(0, krPage));
-  }
-  function krRenderPage(){
-    var c = document.getElementById('kr-content'); if (!c) return;
-    c.style.setProperty('--kr-page-y', (-krPage * krPageH()) + 'px');
-    var el = document.getElementById('kr-page-counter');
-    if (el) el.textContent = (krPage + 1) + ' / ' + krPages;
-    krLastFraction = krPages > 1 ? krPage / (krPages - 1) : 1;
-    try { if (window.AndroidReader) AndroidReader.onProgress(krLastFraction, '', false); } catch(e){}
-  }
-  window.krGoToPage = function(n){
-    krMeasurePages();
-    krPage = Math.min(krPages - 1, Math.max(0, n));
-    krRenderPage();
-  };
-  // Seed the last-known reading fraction (used to pick the page on restore).
-  window.krSeedFraction = function(f){ var n = parseFloat(f); if (!isNaN(n)) krLastFraction = n; };
   // Smoothly move to a 0..1 position — used to follow narration.
   window.krSmoothToFraction = function(f){
     krStopSticky();
-    if (krPaged){ krGoToPage(Math.round(f * ((krPages || 1) - 1))); return; }
     var doc = document.documentElement;
     window.scrollTo({ top: (doc.scrollHeight - doc.clientHeight) * f, left: 0, behavior: 'smooth' });
   };
-  window.krSetPaged = function(on){
-    on = !!on;
-    if (on === krPaged){ if (on){ krMeasurePages(); krRenderPage(); } return; }
-    krPaged = on;
-    krStopSticky();
-    if (on){
-      if (!document.getElementById('kr-page-counter')){
-        var el = document.createElement('div');
-        el.id = 'kr-page-counter'; el.className = 'kr-page-counter';
-        document.body.appendChild(el);
-      }
-      document.body.classList.add('kr-paged');
-      var startFrac = krLastFraction || 0;
-      var place = function(){
-        krMeasurePages();
-        krPage = Math.round(startFrac * (krPages - 1));
-        krRenderPage();
-      };
-      setTimeout(place, 60);
-      // Re-measure once web fonts settle (they change the content height).
-      if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ if (krPaged) place(); });
-    } else {
-      document.body.classList.remove('kr-paged');
-      var c = document.getElementById('kr-content'); if (c) c.style.removeProperty('--kr-page-y');
-      var doc = document.documentElement;
-      window.scrollTo(0, (doc.scrollHeight - doc.clientHeight) * (krLastFraction || 0));
-    }
-  };
-  // Swipe up/down to turn pages (paged mode only). Doesn't disturb the native tap.
-  var krTX = 0, krTY = 0, krSwiping = false;
-  window.addEventListener('touchstart', function(e){
-    if (!krPaged || !e.touches.length) return;
-    krTX = e.touches[0].clientX; krTY = e.touches[0].clientY; krSwiping = true;
-  }, { passive: true });
-  window.addEventListener('touchend', function(e){
-    if (!krPaged || !krSwiping) return; krSwiping = false;
-    var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
-    var dx = t.clientX - krTX, dy = t.clientY - krTY;
-    if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx) * 1.2) krGoToPage(krPage + (dy < 0 ? 1 : -1));
-  }, { passive: true });
-  window.addEventListener('resize', function(){ if (krPaged){ krMeasurePages(); krRenderPage(); } });
-  (function(){
-    var imgs = document.images;
-    for (var i = 0; i < imgs.length; i++){
-      if (!imgs[i].complete){
-        imgs[i].addEventListener('load', function(){ if (krPaged){ krMeasurePages(); krRenderPage(); } });
-      }
-    }
-  })();
 
   // Restore position. Prefer the block anchor; fall back to a raw fraction for
   // rows saved before anchors existed.
@@ -428,12 +338,10 @@ body.kr-paged .kr-footer { display: none; }
   window.krStopSticky = krStopSticky;
   window.krRestore = function(fraction){
     krLastFraction = fraction;
-    if (krPaged){ krGoToPage(Math.round(fraction * ((krPages || 1) - 1))); return; }
     var doc = document.documentElement;
     window.scrollTo(0, (doc.scrollHeight - doc.clientHeight) * fraction);
   };
   window.krRestoreAnchor = function(anchor){
-    if (krPaged){ krGoToPage(Math.round((krLastFraction || 0) * ((krPages || 1) - 1))); return; }
     if (!krScrollToAnchor(anchor)) return;
     // Re-pin to the anchor as images/fonts finish loading (they change layout
     // above us), and stop the moment the reader scrolls themselves.
@@ -458,10 +366,9 @@ body.kr-paged .kr-footer { display: none; }
     window.addEventListener(ev, krStopSticky, { passive: true });
   });
 
-  // Page up/down by (almost) a screenful — driven by the hardware volume keys.
+  // Page up/down by (almost) a screenful — volume keys and left/right taps.
   window.krPageBy = function(dir){
     krStopSticky();
-    if (krPaged){ krGoToPage(krPage + (dir > 0 ? 1 : -1)); return; }
     var doc = document.scrollingElement || document.documentElement;
     var page = Math.max(40, doc.clientHeight - 64);
     window.scrollBy({ top: page * dir, left: 0, behavior: 'smooth' });
