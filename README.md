@@ -1,28 +1,28 @@
+> [!IMPORTANT]  
+> Kararead is an independent, unofficial client and is not affiliated with the Karakeep project in any way.
+
 <div align="center">
 
 # 📖 Kararead
 
 **An Instapaper-style reader for your [Karakeep](https://karakeep.app) library.**
 
-> [!IMPORTANT]
-> Kararead is an independent, unofficial client and is not affiliated with the Karakeep project in any way.
-
 <a href="./screenshots/home.jpeg">
-   <img src="./screenshots/home.jpeg" alt="Kararead home screen" width="200" style="margin:5px">
+   <img src="./screenshots/home.jpeg" alt="Kararead home screen" width="200" style="margin:40px">
 </a>
 <a href="./screenshots/reader-settings.jpeg">
-   <img src="./screenshots/reader-settings.jpeg" alt="Kararead reader settings" width="200" style="margin:5px">
+   <img src="./screenshots/reader-settings.jpeg" alt="Kararead reader settings" width="200" style="margin:40px">
 </a>
 <a href="./screenshots/reader.jpeg">
-   <img src="./screenshots/reader.jpeg" alt="Kararead reader view" width="200" style="margin:5px">
+   <img src="./screenshots/reader.jpeg" alt="Kararead reader view" width="200" style="margin:40px">
 </a>
-
-> [!IMPORTANT]
-> LLM Disclosure: Kararead was built with substantial help from large language models, with agent guidance kept in [`AGENTS.md`](AGENTS.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
+
+> [!IMPORTANT]  
+> LLM Disclosure: Kararead was built with substantial help from large language models, with agent guidance kept in [`AGENTS.md`](AGENTS.md)
 
 ---
 
