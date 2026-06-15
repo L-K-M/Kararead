@@ -4,8 +4,10 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import ch.lkmc.kararead.data.local.CachedArticleDao
+import ch.lkmc.kararead.data.local.ReadingDayEntity
 import ch.lkmc.kararead.data.local.ReadingProgressDao
 import ch.lkmc.kararead.data.local.ReadingProgressEntity
+import ch.lkmc.kararead.data.local.ReadingStatsDao
 import ch.lkmc.kararead.data.model.Bookmark
 import ch.lkmc.kararead.data.model.BookmarkSource
 import ch.lkmc.kararead.data.model.ConnectionSettings
@@ -22,8 +24,11 @@ import ch.lkmc.kararead.data.remote.toCacheEntity
 import ch.lkmc.kararead.data.remote.toDomain
 import ch.lkmc.kararead.data.remote.toReaderArticle
 import ch.lkmc.kararead.data.paging.BookmarksPagingSource
+import ch.lkmc.kararead.util.ReadingStats
+import ch.lkmc.kararead.util.computeReadingStats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,6 +43,7 @@ class KarakeepRepository @Inject constructor(
     private val apiProvider: ApiProvider,
     private val progressDao: ReadingProgressDao,
     private val cacheDao: CachedArticleDao,
+    private val statsDao: ReadingStatsDao,
 ) {
     private fun api(): KarakeepApi = apiProvider.api()
     private val assetResolver: (String) -> String? = { apiProvider.assetUrl(it) }
@@ -181,6 +187,21 @@ class KarakeepRepository @Inject constructor(
             ReadingProgressEntity(id, fraction.coerceIn(0f, 1f), System.currentTimeMillis()),
         )
     }
+
+    // --- Reading stats (streaks / minutes) ---
+
+    /** Add active reading time to today's tally. */
+    suspend fun addReadingSeconds(seconds: Long) {
+        if (seconds <= 0L) return
+        val date = LocalDate.now().toString()
+        val existing = statsDao.get(date)?.seconds ?: 0L
+        statsDao.upsert(ReadingDayEntity(date, existing + seconds, System.currentTimeMillis()))
+    }
+
+    fun readingStats(): Flow<ReadingStats> =
+        statsDao.observeAll().map { rows ->
+            computeReadingStats(rows.associate { it.date to it.seconds })
+        }
 
     suspend fun clearCache() {
         cacheDao.clear()

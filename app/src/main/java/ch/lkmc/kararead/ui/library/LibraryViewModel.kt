@@ -30,6 +30,7 @@ data class LibraryUiState(
     val tab: LibraryTab = LibraryTab.INBOX,
     val sort: QueueSort = QueueSort.NEWEST,
     val readLaterName: String? = null,
+    val currentStreakDays: Int = 0,
 )
 
 sealed interface LibraryEvent {
@@ -52,8 +53,13 @@ class LibraryViewModel @Inject constructor(
     val eventFlow: Flow<LibraryEvent> = events.receiveAsFlow()
 
     val uiState: StateFlow<LibraryUiState> =
-        combine(tab, sort, readLater) { t, s, rl ->
-            LibraryUiState(tab = t, sort = s, readLaterName = rl?.second)
+        combine(tab, sort, readLater, repository.readingStats()) { t, s, rl, stats ->
+            LibraryUiState(
+                tab = t,
+                sort = s,
+                readLaterName = rl?.second,
+                currentStreakDays = stats.currentStreakDays,
+            )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, LibraryUiState())
 
     val progress: StateFlow<Map<String, Float>> =

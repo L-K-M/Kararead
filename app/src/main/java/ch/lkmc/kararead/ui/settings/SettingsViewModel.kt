@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import ch.lkmc.kararead.data.model.AppThemeMode
 import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.repository.KarakeepRepository
+import ch.lkmc.kararead.util.ReadingStats
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +21,7 @@ data class SettingsUiState(
     val dynamicColor: Boolean = true,
     val readLaterName: String? = null,
     val cachedCount: Int = 0,
+    val stats: ReadingStats = ReadingStats(),
 )
 
 @HiltViewModel
@@ -32,20 +34,24 @@ class SettingsViewModel @Inject constructor(
 
     val state: StateFlow<SettingsUiState> =
         combine(
-            settings.connection,
-            settings.appThemeMode,
-            settings.dynamicColor,
-            settings.readLaterList,
-            cachedCount,
-        ) { conn, theme, dynamic, readLater, count ->
-            SettingsUiState(
-                serverUrl = conn.serverUrl,
-                themeMode = theme,
-                dynamicColor = dynamic,
-                readLaterName = readLater?.second,
-                cachedCount = count,
-            )
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
+            combine(
+                settings.connection,
+                settings.appThemeMode,
+                settings.dynamicColor,
+                settings.readLaterList,
+                cachedCount,
+            ) { conn, theme, dynamic, readLater, count ->
+                SettingsUiState(
+                    serverUrl = conn.serverUrl,
+                    themeMode = theme,
+                    dynamicColor = dynamic,
+                    readLaterName = readLater?.second,
+                    cachedCount = count,
+                )
+            },
+            repository.readingStats(),
+        ) { base, stats -> base.copy(stats = stats) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
 
     init {
         refreshCacheCount()
