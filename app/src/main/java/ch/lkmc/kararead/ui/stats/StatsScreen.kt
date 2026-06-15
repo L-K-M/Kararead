@@ -88,17 +88,26 @@ private fun StreakHero(days: Int, longest: Int) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text("🔥", style = MaterialTheme.typography.displaySmall)
-            Text(
-                "$days",
-                style = MaterialTheme.typography.displayLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Text(
-                if (days == 1) "day streak" else "day streak",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
+            if (days >= 1) {
+                Text(
+                    "$days",
+                    style = MaterialTheme.typography.displayLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    if (days == 1) "day streak" else "days streak",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            } else {
+                // No active streak: encourage rather than show a deflating "0".
+                Text(
+                    "Read today to start a streak",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
             if (longest > days && longest > 1) {
                 Spacer(Modifier.height(4.dp))
                 Text(
