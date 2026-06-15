@@ -162,8 +162,15 @@ fun ReaderWebView(
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.loadsImagesAutomatically = true
-                settings.builtInZoomControls = false
+                // Allow pinch-to-zoom (no on-screen buttons) so diagrams, wide
+                // tables and small images can be enlarged — an accessibility win.
+                settings.builtInZoomControls = true
                 settings.displayZoomControls = false
+                // Self-hosted servers (especially via the http fallback) often
+                // serve http-hosted images even on an https page; let them load
+                // rather than be blocked as mixed content. Bodies are sanitized
+                // and the asset loader fetches images itself.
+                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 settings.textZoom = 100
                 isVerticalScrollBarEnabled = true
                 isHorizontalScrollBarEnabled = false
