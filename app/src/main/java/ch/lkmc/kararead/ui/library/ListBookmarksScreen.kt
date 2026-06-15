@@ -29,6 +29,7 @@ fun ListBookmarksScreen(
 ) {
     val items = viewModel.bookmarks.collectAsLazyPagingItems()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
+    val readingTimes by viewModel.readingTimes.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -45,6 +46,7 @@ fun ListBookmarksScreen(
         BookmarkList(
             items = items,
             progressFor = { progress[it] ?: 0f },
+            readingTimeFor = { readingTimes[it] },
             onOpen = onOpenReader,
             onArchive = viewModel::archive,
             onFavourite = viewModel::favourite,

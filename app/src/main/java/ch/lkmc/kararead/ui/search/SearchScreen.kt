@@ -45,6 +45,7 @@ fun SearchScreen(
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
+    val readingTimes by viewModel.readingTimes.collectAsStateWithLifecycle()
     val tags by viewModel.tags.collectAsStateWithLifecycle()
     val results = viewModel.results.collectAsLazyPagingItems()
 
@@ -144,6 +145,7 @@ fun SearchScreen(
             BookmarkList(
                 items = results,
                 progressFor = { progress[it] ?: 0f },
+                readingTimeFor = { readingTimes[it] },
                 onOpen = onOpenReader,
                 enableSwipe = false,
                 emptyTitle = "No results",

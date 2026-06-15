@@ -69,6 +69,9 @@ class LibraryViewModel @Inject constructor(
     val cachedIds: StateFlow<Set<String>> =
         repository.cachedIds().stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    val readingTimes: StateFlow<Map<String, Int>> =
+        repository.cachedReadingTimes().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
     val recents: StateFlow<List<RecentArticle>> =
         repository.recentlyOpened().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 

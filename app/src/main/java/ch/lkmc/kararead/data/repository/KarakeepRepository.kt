@@ -244,6 +244,11 @@ class KarakeepRepository @Inject constructor(
     /** Ids of articles currently available offline, for "downloaded" indicators. */
     fun cachedIds(): Flow<Set<String>> = cacheDao.observeIds().map { it.toSet() }
 
+    /** Cached reading-time hints, so list cards can show "N min" once an article
+     *  has been opened (list/search responses omit content, hence reading time). */
+    fun cachedReadingTimes(): Flow<Map<String, Int>> =
+        cacheDao.observeReadingTimes().map { rows -> rows.associate { it.bookmarkId to it.readingTimeMinutes } }
+
     /** Recently opened articles (newest first) for the library's quick-resume strip. */
     fun recentlyOpened(limit: Int = 12): Flow<List<RecentArticle>> =
         cacheDao.observeRecent(limit).map { rows ->

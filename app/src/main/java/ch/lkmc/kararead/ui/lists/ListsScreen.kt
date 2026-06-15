@@ -1,7 +1,6 @@
 package ch.lkmc.kararead.ui.lists
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -43,10 +43,14 @@ fun ListsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Lists") }) }) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        PullToRefreshBox(
+            isRefreshing = state.loading && state.lists.isNotEmpty(),
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.padding(padding).fillMaxSize(),
+        ) {
             when {
-                state.loading -> LoadingState()
-                state.error != null -> MessageState(
+                state.loading && state.lists.isEmpty() -> LoadingState()
+                state.error != null && state.lists.isEmpty() -> MessageState(
                     title = "Couldn't load lists",
                     subtitle = state.error,
                     emoji = "⚠️",

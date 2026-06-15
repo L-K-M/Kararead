@@ -46,6 +46,9 @@ class SearchViewModel @Inject constructor(
     val progress: StateFlow<Map<String, Float>> =
         repository.allProgress().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
+    val readingTimes: StateFlow<Map<String, Int>> =
+        repository.cachedReadingTimes().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
     init {
         loadTags()
     }

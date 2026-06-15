@@ -51,6 +51,10 @@ interface CachedArticleDao {
     @Query("SELECT bookmarkId FROM cached_article")
     suspend fun ids(): List<String>
 
+    /** Reading-time hints captured when articles were cached (for list cards). */
+    @Query("SELECT bookmarkId, readingTimeMinutes FROM cached_article WHERE readingTimeMinutes IS NOT NULL")
+    fun observeReadingTimes(): Flow<List<ReadingTimeRow>>
+
     /**
      * Recently *opened* articles, newest first: cached articles that also have a
      * reading-progress row (i.e. the user actually read them). Joining on
@@ -72,6 +76,12 @@ interface CachedArticleDao {
     @Query("DELETE FROM cached_article")
     suspend fun clear()
 }
+
+/** Projection of a cached article's reading-time hint. */
+data class ReadingTimeRow(
+    val bookmarkId: String,
+    val readingTimeMinutes: Int,
+)
 
 /** Projection for the library's "recently opened" strip. */
 data class RecentArticleRow(

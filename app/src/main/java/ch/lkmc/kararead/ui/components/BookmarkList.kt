@@ -42,6 +42,7 @@ fun BookmarkList(
     onOpen: (String) -> Unit,
     modifier: Modifier = Modifier,
     isCached: (String) -> Boolean = { false },
+    readingTimeFor: (String) -> Int? = { null },
     enableSwipe: Boolean = true,
     onArchive: ((Bookmark) -> Unit)? = null,
     onFavourite: ((Bookmark) -> Unit)? = null,
@@ -92,6 +93,7 @@ fun BookmarkList(
                                     bookmark = bookmark,
                                     progress = progressFor(bookmark.id),
                                     offline = isCached(bookmark.id),
+                                    readingTimeOverride = readingTimeFor(bookmark.id),
                                     onClick = { onOpen(bookmark.id) },
                                 )
                             }
@@ -100,6 +102,7 @@ fun BookmarkList(
                                 bookmark = bookmark,
                                 progress = progressFor(bookmark.id),
                                 offline = isCached(bookmark.id),
+                                readingTimeOverride = readingTimeFor(bookmark.id),
                                 onClick = { onOpen(bookmark.id) },
                             )
                         }

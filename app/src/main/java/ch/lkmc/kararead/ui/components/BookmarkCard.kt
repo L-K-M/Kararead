@@ -37,6 +37,7 @@ fun BookmarkCard(
     progress: Float,
     modifier: Modifier = Modifier,
     offline: Boolean = false,
+    readingTimeOverride: Int? = null,
     onClick: () -> Unit,
 ) {
     val isRead = progress >= 0.98f || bookmark.archived
@@ -102,7 +103,13 @@ fun BookmarkCard(
             }
 
             Spacer(Modifier.height(6.dp))
-            MetaLine(bookmark = bookmark, progress = progress, isRead = isRead, offline = offline)
+            MetaLine(
+                bookmark = bookmark,
+                progress = progress,
+                isRead = isRead,
+                offline = offline,
+                readingTimeOverride = readingTimeOverride,
+            )
         }
 
         if (!bookmark.imageUrl.isNullOrBlank()) {
@@ -121,9 +128,17 @@ fun BookmarkCard(
 }
 
 @Composable
-private fun MetaLine(bookmark: Bookmark, progress: Float, isRead: Boolean, offline: Boolean) {
+private fun MetaLine(
+    bookmark: Bookmark,
+    progress: Float,
+    isRead: Boolean,
+    offline: Boolean,
+    readingTimeOverride: Int? = null,
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        val readingTime = bookmark.readingTimeMinutes
+        // Reading time is null for list/search results (fetched without content);
+        // fall back to a value cached from when the article was opened.
+        val readingTime = bookmark.readingTimeMinutes ?: readingTimeOverride
         val date = ch.lkmc.kararead.util.formatShortDate(bookmark.datePublished ?: bookmark.createdAt)
         val base = when {
             isRead -> "Read"
