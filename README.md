@@ -8,13 +8,15 @@
 **An Instapaper-style reader for your [Karakeep](https://karakeep.app) library.**
 
 <a href="./screenshots/home.jpeg">
-   <img src="./screenshots/home.jpeg" alt="Kararead home screen" width="200" style="margin:40px">
+   <img src="./screenshots/home.jpeg" alt="Kararead home screen" width="200">
 </a>
+&nbsp;&nbsp;&nbsp;&nbsp;
 <a href="./screenshots/reader-settings.jpeg">
-   <img src="./screenshots/reader-settings.jpeg" alt="Kararead reader settings" width="200" style="margin:40px">
+   <img src="./screenshots/reader-settings.jpeg" alt="Kararead reader settings" width="200">
 </a>
+&nbsp;&nbsp;&nbsp;&nbsp;
 <a href="./screenshots/reader.jpeg">
-   <img src="./screenshots/reader.jpeg" alt="Kararead reader view" width="200" style="margin:40px">
+   <img src="./screenshots/reader.jpeg" alt="Kararead reader view" width="200">
 </a>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
