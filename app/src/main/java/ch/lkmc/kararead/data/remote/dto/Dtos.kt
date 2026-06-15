@@ -164,7 +164,14 @@ data class HighlightDto(
     val createdAt: String? = null,
 )
 
-@Serializable
+/**
+ * Karakeep's REST contract marks `text` and `note` as *required* keys (nullable,
+ * but the keys must be present). The shared [ApiProvider] JSON uses
+ * `explicitNulls = false`, which would drop a null `note` and make the server
+ * reject the create with HTTP 400 — so this request is serialized explicitly,
+ * emitting every key (including JSON `null`) regardless of that setting.
+ */
+@Serializable(with = CreateHighlightRequestSerializer::class)
 data class CreateHighlightRequest(
     val bookmarkId: String,
     val startOffset: Int,
@@ -173,6 +180,35 @@ data class CreateHighlightRequest(
     val text: String? = null,
     val note: String? = null,
 )
+
+internal object CreateHighlightRequestSerializer :
+    kotlinx.serialization.KSerializer<CreateHighlightRequest> {
+    override val descriptor =
+        kotlinx.serialization.descriptors.buildClassSerialDescriptor("CreateHighlightRequest")
+
+    override fun serialize(
+        encoder: kotlinx.serialization.encoding.Encoder,
+        value: CreateHighlightRequest,
+    ) {
+        val jsonEncoder = encoder as? kotlinx.serialization.json.JsonEncoder
+            ?: error("CreateHighlightRequest can only be serialized to JSON")
+        jsonEncoder.encodeJsonElement(
+            kotlinx.serialization.json.buildJsonObject {
+                put("bookmarkId", kotlinx.serialization.json.JsonPrimitive(value.bookmarkId))
+                put("startOffset", kotlinx.serialization.json.JsonPrimitive(value.startOffset))
+                put("endOffset", kotlinx.serialization.json.JsonPrimitive(value.endOffset))
+                put("color", kotlinx.serialization.json.JsonPrimitive(value.color))
+                put("text", kotlinx.serialization.json.JsonPrimitive(value.text))
+                put("note", kotlinx.serialization.json.JsonPrimitive(value.note))
+            },
+        )
+    }
+
+    override fun deserialize(
+        decoder: kotlinx.serialization.encoding.Decoder,
+    ): CreateHighlightRequest =
+        throw UnsupportedOperationException("CreateHighlightRequest is write-only")
+}
 
 // --- User ---
 

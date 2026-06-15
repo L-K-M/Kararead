@@ -2,7 +2,9 @@ package ch.lkmc.kararead.data.remote
 
 import ch.lkmc.kararead.data.remote.dto.BookmarkDto
 import ch.lkmc.kararead.data.remote.dto.ContentDto
+import ch.lkmc.kararead.data.remote.dto.CreateHighlightRequest
 import ch.lkmc.kararead.data.remote.dto.PaginatedBookmarksDto
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -94,6 +96,24 @@ class DtoSerializationTest {
         """.trimIndent()
         val bm = json.decodeFromString<BookmarkDto>(payload)
         assertTrue(bm.content is ContentDto.Unknown)
+    }
+
+    @Test
+    fun `create-highlight request always sends text and note keys`() {
+        // Karakeep's REST contract marks text and note as required keys (nullable
+        // but present). With explicitNulls = false the body would otherwise drop a
+        // null note and the server rejects the create with HTTP 400.
+        val body = json.encodeToString(
+            CreateHighlightRequest(
+                bookmarkId = "bm1",
+                startOffset = 1,
+                endOffset = 5,
+                text = "hi",
+                note = null,
+            ),
+        )
+        assertTrue("body should carry text: $body", body.contains("\"text\""))
+        assertTrue("body should carry note: $body", body.contains("\"note\""))
     }
 
     @Test
