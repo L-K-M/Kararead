@@ -17,6 +17,7 @@ import javax.inject.Inject
 
 data class SettingsUiState(
     val serverUrl: String = "",
+    val fallbackUrl: String = "",
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
     val readLaterName: String? = null,
@@ -43,6 +44,7 @@ class SettingsViewModel @Inject constructor(
             ) { conn, theme, dynamic, readLater, count ->
                 SettingsUiState(
                     serverUrl = conn.serverUrl,
+                    fallbackUrl = conn.fallbackUrl,
                     themeMode = theme,
                     dynamicColor = dynamic,
                     readLaterName = readLater?.second,
