@@ -216,9 +216,9 @@ body {
 }
 .kr-article {
   text-align: var(--kr-align);
-  -webkit-hyphens: auto; hyphens: auto;
-  -webkit-hyphenate-limit-before: 3; -webkit-hyphenate-limit-after: 3;
-  hyphenate-limit-chars: 6 3 3;
+  /* Hyphenation is off: soft-hyphen break opportunities confuse Android
+     WebView's text-selection handles (handles land mid-paragraph). */
+  -webkit-hyphens: none; hyphens: none;
 }
 /* Don't hyphenate code/headings. */
 .kr-article pre, .kr-article code, .kr-article h1, .kr-article h2,
