@@ -324,16 +324,29 @@ class ReaderViewModel @Inject constructor(
         return runCatching { repository.nextInboxId(bookmarkId) }.getOrNull()
     }
 
+    /**
+     * Persist the latest scroll position right now, bypassing the [onProgress]
+     * debounce. Called when the reader is backgrounded (ON_STOP) so the position
+     * survives a background process kill — `onCleared` isn't called when the OS
+     * reclaims the process, and the debounced write would never run. Uses
+     * [appScope] so the write outlives this ViewModel if it's being cleared.
+     */
+    fun flushProgress() {
+        saveJob?.cancel()
+        if (bookmarkId.isEmpty()) return
+        if (kotlin.math.abs(pendingFraction - lastSaved) < 0.001f) return
+        val fraction = pendingFraction
+        val anchor = pendingAnchor
+        lastSaved = fraction
+        appScope.launch { repository.saveProgress(bookmarkId, fraction, anchor) }
+    }
+
     override fun onCleared() {
         speaker.shutdown()
         // Flush the last scroll position even though viewModelScope is being
         // cancelled — otherwise the final movement before exit (when "resume"
         // matters most) is lost with the debounced write.
-        if (bookmarkId.isNotEmpty() && kotlin.math.abs(pendingFraction - lastSaved) >= 0.001f) {
-            val fraction = pendingFraction
-            val anchor = pendingAnchor
-            appScope.launch { repository.saveProgress(bookmarkId, fraction, anchor) }
-        }
+        flushProgress()
         super.onCleared()
     }
 

@@ -206,6 +206,17 @@ fun ReaderScreen(
         }
     }
 
+    // Persist the reading position the moment we're backgrounded, so it survives
+    // a background process kill — onCleared() isn't guaranteed in that case, and
+    // the debounced write may not have run yet.
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.flushProgress()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // Claim the hardware volume keys for page turning while this screen is shown.
     val volumeController = remember(context) { context.findVolumeKeyController() }
     androidx.compose.runtime.DisposableEffect(volumeController, prefs.volumeKeyPaging) {
