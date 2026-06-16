@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Star
@@ -18,10 +19,13 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,11 +63,33 @@ fun BookmarkList(
     onEmptyAction: (() -> Unit)? = null,
 ) {
     val refreshing = items.loadState.refresh is LoadState.Loading
-    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val pullState = rememberPullToRefreshState()
+    val haptics = LocalHapticFeedback.current
+
+    // Haptic detent the instant the pull passes the refresh threshold, so you
+    // can feel that releasing will refresh — before letting go. Re-arms if you
+    // ease back under the threshold and past it again.
+    LaunchedEffect(pullState) {
+        snapshotFlow { pullState.distanceFraction >= 1f }.collect { pastThreshold ->
+            if (pastThreshold) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
+    // When a pull-to-refresh finishes, reveal the freshly-loaded rows: Paging
+    // inserts new items at the top but LazyColumn keeps the old scroll anchor,
+    // leaving them hidden above the fold. Snap back to the top so they show.
+    var wasRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshing) {
+        if (wasRefreshing && !refreshing && items.itemCount > 0) {
+            listState.animateScrollToItem(0)
+        }
+        wasRefreshing = refreshing
+    }
 
     PullToRefreshBox(
         isRefreshing = refreshing,
         onRefresh = { items.refresh() },
+        state = pullState,
         modifier = modifier.fillMaxSize(),
     ) {
         when {
