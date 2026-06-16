@@ -13,14 +13,23 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebView.HitTestResult
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import ch.lkmc.kararead.data.model.ReaderArticle
 import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.reader.ReaderHtmlBuilder
+
+/** Height of the (Material 3 small) top app bar overlaid on the article, in dp. */
+private const val READER_TOP_BAR_DP = 64
+/** Breathing space between the top app bar and the article title, in dp. */
+private const val READER_TOP_GAP_DP = 16
 
 /**
  * Lets the host (e.g. the reader screen's volume-key handler) page the WebView
@@ -138,6 +147,7 @@ private class HighlightWebView(context: Context) : WebView(context) {
 // JavascriptInterface: ReaderBridge's methods are annotated with
 // @JavascriptInterface; lint can't track the type through the Compose closure.
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ReaderWebView(
     article: ReaderArticle,
@@ -156,9 +166,18 @@ fun ReaderWebView(
     modifier: Modifier = Modifier,
 ) {
     val palette = remember(prefs.theme) { ReaderHtmlBuilder.paletteFor(prefs.theme) }
+    // The reader draws edge-to-edge behind the overlaid, auto-hiding top app bar,
+    // so the article needs enough head-room to clear it: the status-bar inset plus
+    // the bar's height, with a little breathing space below. Use the inset that
+    // *ignores visibility* — the bar is hidden while reading immersively, and a
+    // changing value here would rebuild the document and lose the scroll position.
+    val density = LocalDensity.current
+    val statusBarTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
+    val safeTopPx = with(density) { statusBarTopPx.toDp().value }.toInt() +
+        READER_TOP_BAR_DP + READER_TOP_GAP_DP
     // Build the document once per article; preference changes are applied via JS.
-    val html = remember(article.bookmark.id, baseUrl) {
-        ReaderHtmlBuilder.build(article, prefs, baseUri = baseUrl)
+    val html = remember(article.bookmark.id, baseUrl, safeTopPx) {
+        ReaderHtmlBuilder.build(article, prefs, baseUri = baseUrl, safeTopPx = safeTopPx)
     }
 
     val bridge: ReaderBridge = remember {
@@ -224,6 +243,10 @@ fun ReaderWebView(
                     }
                     applied.appliedHighlights = applied.desiredHighlights
                     applyHighlights(applied.desiredHighlights)
+                    // Re-assert head-room in case the window inset settled after
+                    // the document was first built.
+                    applied.appliedSafeTopPx = applied.desiredSafeTopPx
+                    setSafeTop(applied.desiredSafeTopPx)
                 }
                 addJavascriptInterface(bridge, "AndroidReader")
                 pager.pageBy = { dir -> evaluateJavascript("window.krPageBy && window.krPageBy($dir);", null) }
@@ -266,6 +289,7 @@ fun ReaderWebView(
             // on the recompositions that merely report scroll progress.
             applied.desiredPrefs = prefs
             applied.desiredHighlights = highlightsJson
+            applied.desiredSafeTopPx = safeTopPx
             webView.setBackgroundColor(safeColor(palette.background))
             if (applied.ready) {
                 if (applied.appliedPrefs != prefs) {
@@ -275,6 +299,10 @@ fun ReaderWebView(
                 if (applied.appliedHighlights != highlightsJson) {
                     applied.appliedHighlights = highlightsJson
                     webView.applyHighlights(highlightsJson)
+                }
+                if (applied.appliedSafeTopPx != safeTopPx) {
+                    applied.appliedSafeTopPx = safeTopPx
+                    webView.setSafeTop(safeTopPx)
                 }
             }
         },
@@ -306,6 +334,14 @@ private fun WebView.applyHighlights(json: String) {
     evaluateJavascript("window.krApplyHighlights && window.krApplyHighlights($arg);", null)
 }
 
+/** Update the article's top head-room (CSS `--kr-safe-top`) live, in CSS px. */
+private fun WebView.setSafeTop(px: Int) {
+    evaluateJavascript(
+        "document.documentElement.style.setProperty('--kr-safe-top', '${px}px');",
+        null,
+    )
+}
+
 private fun safeColor(hex: String): Int =
     runCatching { AndroidColor.parseColor(hex) }.getOrDefault(AndroidColor.WHITE)
 
@@ -323,6 +359,8 @@ private class AppliedReaderState {
     var appliedPrefs: ReaderPreferences? = null
     var desiredHighlights: String = "[]"
     var appliedHighlights: String? = null
+    var desiredSafeTopPx: Int = 0
+    var appliedSafeTopPx: Int? = null
 }
 
 /**

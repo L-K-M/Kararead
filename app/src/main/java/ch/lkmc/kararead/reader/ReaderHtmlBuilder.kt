@@ -59,7 +59,7 @@ object ReaderHtmlBuilder {
         return Jsoup.clean(html, baseUri, safelist)
     }
 
-    fun build(article: ReaderArticle, prefs: ReaderPreferences, baseUri: String? = null): String {
+    fun build(article: ReaderArticle, prefs: ReaderPreferences, baseUri: String? = null, safeTopPx: Int = 0): String {
         val palette = paletteFor(prefs.theme)
         val bm = article.bookmark
         val body = article.htmlContent?.let { sanitize(it, baseUri.orEmpty()) }
@@ -82,7 +82,7 @@ object ReaderHtmlBuilder {
 <style>
 ${fontFaceCss()}
 ${baseCss()}
-${variableCss(palette, prefs)}
+${variableCss(palette, prefs, safeTopPx)}
 </style>
 </head>
 <body>
@@ -103,10 +103,15 @@ ${progressScript()}
     }
 
     /** Runtime-updatable CSS variables, also emitted as JS for live preference changes. */
-    fun variableCss(palette: ReaderPalette, prefs: ReaderPreferences): String {
+    fun variableCss(palette: ReaderPalette, prefs: ReaderPreferences, safeTopPx: Int = 0): String {
         val baseFontPx = (19 * prefs.fontScale)
+        // Head-room so the title clears the (edge-to-edge, overlaid) top app bar.
+        // The host passes the status-bar inset + bar height; fall back to the bare
+        // top margin when unknown (e.g. tests).
+        val safeTop = if (safeTopPx > 0) safeTopPx else 28
         return """
 :root {
+  --kr-safe-top: ${safeTop}px;
   --kr-bg: ${palette.background};
   --kr-surface: ${palette.surface};
   --kr-text: ${palette.text};
@@ -192,7 +197,7 @@ body {
 #kr-content {
   max-width: 720px;
   margin: 0 auto;
-  padding: 28px var(--kr-margin) 96px var(--kr-margin);
+  padding: var(--kr-safe-top, 28px) var(--kr-margin) 96px var(--kr-margin);
 }
 .kr-header { margin-bottom: 1.6em; }
 .kr-title {

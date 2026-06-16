@@ -80,6 +80,24 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
+    fun `safe-top inset is applied as content head-room`() {
+        // The host passes the status-bar inset + bar height so the title clears
+        // the overlaid, edge-to-edge top app bar.
+        val out = ReaderHtmlBuilder.build(
+            article("<p>x</p>"), ReaderPreferences(), safeTopPx = 120,
+        )
+        assertTrue(out.contains("--kr-safe-top: 120px"))
+    }
+
+    @Test
+    fun `safe-top falls back to the bare top margin when unknown`() {
+        val css = ReaderHtmlBuilder.variableCss(
+            ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT), ReaderPreferences(),
+        )
+        assertTrue(css.contains("--kr-safe-top: 28px"))
+    }
+
+    @Test
     fun `reader script handles in-page anchor links`() {
         // The built document should intercept same-document fragment links and
         // scroll within the article rather than letting them navigate away.
