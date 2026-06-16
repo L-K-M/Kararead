@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -58,7 +61,9 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,7 +79,7 @@ import ch.lkmc.kararead.ui.components.MessageState
 /** Granularity of the reading-time tally, in seconds. */
 private const val READING_TICK_SECONDS = 15L
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReaderScreen(
     onBack: () -> Unit,
@@ -101,6 +106,9 @@ fun ReaderScreen(
     var pendingHighlightId by remember { mutableStateOf<String?>(null) }
     var showVoicePicker by remember { mutableStateOf(false) }
     val pager = remember { ReaderPager() }
+    // Measured height of the end-of-article "Done · Next" badge, so paging can
+    // avoid scrolling text behind it (see pageCoverCssPx below).
+    var finishFabHeightPx by remember { mutableStateOf(0) }
 
     // Immersive reading: the system status bar follows the reader chrome, so it
     // hides while you read and returns on tap. Restore it when leaving.
@@ -210,6 +218,19 @@ fun ReaderScreen(
         onDispose { volumeController?.setVolumeKeyHandler(null) }
     }
 
+    // The "Done · Next" badge shows near the end and covers the bottom-right text.
+    // Tell the WebView how much vertical space it occupies (nav-bar inset + its own
+    // height + margin), in CSS px, so paging doesn't land text behind it.
+    val finishVisible =
+        state.article != null && !state.archived && !speech.active && state.progress >= 0.92f
+    val density = LocalDensity.current
+    val navBottomDp = WindowInsets.navigationBarsIgnoringVisibility.getBottom(density) / density.density
+    val pageCoverCssPx = if (finishVisible && finishFabHeightPx > 0) {
+        (navBottomDp + 16f + finishFabHeightPx / density.density).toInt()
+    } else {
+        0
+    }
+
     Box(Modifier.fillMaxSize()) {
         when {
             state.loading -> LoadingState()
@@ -239,6 +260,7 @@ fun ReaderScreen(
                     onHighlightTap = { id -> pendingHighlightId = id },
                     highlightsJson = highlightsJson,
                     pager = pager,
+                    pageBottomCoverPx = pageCoverCssPx,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -421,7 +443,7 @@ fun ReaderScreen(
 
         // B5: when you reach the end, a gentle "finish & continue" affordance.
         AnimatedVisibility(
-            visible = state.article != null && !state.archived && !speech.active && state.progress >= 0.92f,
+            visible = finishVisible,
             enter = slideInVertically { it } + fadeIn(),
             exit = slideOutVertically { it } + fadeOut(),
             modifier = Modifier
@@ -430,6 +452,7 @@ fun ReaderScreen(
                 .padding(16.dp),
         ) {
             androidx.compose.material3.ExtendedFloatingActionButton(
+                modifier = Modifier.onSizeChanged { finishFabHeightPx = it.height },
                 onClick = { advance(true) },
                 icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
                 text = {

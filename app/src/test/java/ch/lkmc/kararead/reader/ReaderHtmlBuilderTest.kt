@@ -98,6 +98,15 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
+    fun `paging keeps a line of overlap and clears the next-article badge`() {
+        val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
+        // Page distance = viewport - one line - whatever the badge covers.
+        assertTrue(out.contains("krLineHeightPx"))
+        assertTrue(out.contains("krBottomCoverPx"))
+        assertTrue(out.contains("--kr-page-bottom-cover"))
+    }
+
+    @Test
     fun `reader script handles in-page anchor links`() {
         // The built document should intercept same-document fragment links and
         // scroll within the article rather than letting them navigate away.

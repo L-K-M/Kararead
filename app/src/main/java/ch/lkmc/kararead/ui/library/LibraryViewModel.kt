@@ -107,6 +107,18 @@ class LibraryViewModel @Inject constructor(
                 if (rl != null && tab.value == LibraryTab.INBOX) tab.value = LibraryTab.READ_LATER
             }
         }
+        // Hide articles archived elsewhere (e.g. finished from the reader's
+        // "Done · Next") from the unread reading queues, so a finished article
+        // doesn't linger in the cached list when you come back. Only the Inbox /
+        // Read-later queues are unread-only; Favourites and Archive can legitimately
+        // contain archived items, so leave those untouched.
+        viewModelScope.launch {
+            repository.archivedIds.collect { id ->
+                if (tab.value == LibraryTab.INBOX || tab.value == LibraryTab.READ_LATER) {
+                    hiddenIds.update { it + id }
+                }
+            }
+        }
     }
 
     fun selectTab(newTab: LibraryTab) {

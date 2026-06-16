@@ -112,6 +112,7 @@ ${progressScript()}
         return """
 :root {
   --kr-safe-top: ${safeTop}px;
+  --kr-page-bottom-cover: 0px;
   --kr-bg: ${palette.background};
   --kr-surface: ${palette.surface};
   --kr-text: ${palette.text};
@@ -371,11 +372,26 @@ body {
     window.addEventListener(ev, krStopSticky, { passive: true });
   });
 
-  // Page up/down by (almost) a screenful — volume keys and left/right taps.
+  // One line of body text, in px — the overlap we keep between pages.
+  function krLineHeightPx(){
+    var el = document.querySelector('#kr-content .kr-article') || document.body;
+    var cs = window.getComputedStyle(el);
+    var lh = parseFloat(cs.lineHeight);
+    if (!lh || isNaN(lh)) lh = parseFloat(cs.fontSize) * 1.5;
+    return lh || 24;
+  }
+  // How much of the bottom the host's "next article" badge is covering (0 when
+  // it isn't shown); the host keeps --kr-page-bottom-cover up to date.
+  function krBottomCoverPx(){
+    var v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kr-page-bottom-cover'));
+    return (v && !isNaN(v)) ? v : 0;
+  }
+  // Page up/down by one screenful, less a line of overlap — and less whatever the
+  // "next article" badge is covering, so paging never lands text behind it.
   window.krPageBy = function(dir){
     krStopSticky();
     var doc = document.scrollingElement || document.documentElement;
-    var page = Math.max(40, doc.clientHeight - 64);
+    var page = Math.max(40, doc.clientHeight - krLineHeightPx() - krBottomCoverPx());
     window.scrollBy({ top: page * dir, left: 0, behavior: 'smooth' });
   };
   // A tap on a highlight asks the host about it. (Chrome toggling is handled

@@ -30,6 +30,8 @@ import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.util.computeReadingStats
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 import javax.inject.Inject
@@ -51,6 +53,12 @@ class KarakeepRepository @Inject constructor(
 ) {
     private fun api(): KarakeepApi = apiProvider.api()
     private val assetResolver: (String) -> String? = { apiProvider.assetUrl(it) }
+
+    // Ids archived (marked read) anywhere this session. The library listens so an
+    // article finished from the reader disappears from the inbox on return,
+    // instead of lingering in its cached paging list.
+    private val _archivedIds = MutableSharedFlow<String>(extraBufferCapacity = 32)
+    val archivedIds: SharedFlow<String> = _archivedIds
 
     // --- Paging ---
 
@@ -127,7 +135,10 @@ class KarakeepRepository @Inject constructor(
         api().updateBookmark(id, UpdateBookmarkRequest(archived = archived))
         // Uncache on read: once an article is archived (done reading) it leaves
         // the offline queue, so drop its cached copy to free space.
-        if (archived) runCatching { cacheDao.delete(id) }
+        if (archived) {
+            runCatching { cacheDao.delete(id) }
+            _archivedIds.tryEmit(id)
+        }
     }
 
     suspend fun setFavourited(id: String, favourited: Boolean) {

@@ -163,6 +163,7 @@ fun ReaderWebView(
     onHighlightTap: (id: String) -> Unit,
     highlightsJson: String,
     pager: ReaderPager,
+    pageBottomCoverPx: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val palette = remember(prefs.theme) { ReaderHtmlBuilder.paletteFor(prefs.theme) }
@@ -247,6 +248,8 @@ fun ReaderWebView(
                     // the document was first built.
                     applied.appliedSafeTopPx = applied.desiredSafeTopPx
                     setSafeTop(applied.desiredSafeTopPx)
+                    applied.appliedPageCoverPx = applied.desiredPageCoverPx
+                    setPageBottomCover(applied.desiredPageCoverPx)
                 }
                 addJavascriptInterface(bridge, "AndroidReader")
                 pager.pageBy = { dir -> evaluateJavascript("window.krPageBy && window.krPageBy($dir);", null) }
@@ -290,6 +293,7 @@ fun ReaderWebView(
             applied.desiredPrefs = prefs
             applied.desiredHighlights = highlightsJson
             applied.desiredSafeTopPx = safeTopPx
+            applied.desiredPageCoverPx = pageBottomCoverPx
             webView.setBackgroundColor(safeColor(palette.background))
             if (applied.ready) {
                 if (applied.appliedPrefs != prefs) {
@@ -303,6 +307,10 @@ fun ReaderWebView(
                 if (applied.appliedSafeTopPx != safeTopPx) {
                     applied.appliedSafeTopPx = safeTopPx
                     webView.setSafeTop(safeTopPx)
+                }
+                if (applied.appliedPageCoverPx != pageBottomCoverPx) {
+                    applied.appliedPageCoverPx = pageBottomCoverPx
+                    webView.setPageBottomCover(pageBottomCoverPx)
                 }
             }
         },
@@ -342,6 +350,14 @@ private fun WebView.setSafeTop(px: Int) {
     )
 }
 
+/** How much of the bottom the "next article" badge covers, for paging (CSS px). */
+private fun WebView.setPageBottomCover(px: Int) {
+    evaluateJavascript(
+        "document.documentElement.style.setProperty('--kr-page-bottom-cover', '${px}px');",
+        null,
+    )
+}
+
 private fun safeColor(hex: String): Int =
     runCatching { AndroidColor.parseColor(hex) }.getOrDefault(AndroidColor.WHITE)
 
@@ -361,6 +377,8 @@ private class AppliedReaderState {
     var appliedHighlights: String? = null
     var desiredSafeTopPx: Int = 0
     var appliedSafeTopPx: Int? = null
+    var desiredPageCoverPx: Int = 0
+    var appliedPageCoverPx: Int? = null
 }
 
 /**

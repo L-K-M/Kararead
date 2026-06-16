@@ -315,7 +315,11 @@ class ReaderViewModel @Inject constructor(
         if (bookmarkId.isEmpty()) return null
         if (archiveFirst && !_state.value.archived) {
             userChangedReadState = true
+            // Reflect the archive locally too, so the article shows as read if you
+            // come back to it; revert if the server call fails.
+            _state.update { it.copy(archived = true) }
             runCatching { repository.setArchived(bookmarkId, true) }
+                .onFailure { _state.update { s -> s.copy(archived = false) } }
         }
         return runCatching { repository.nextInboxId(bookmarkId) }.getOrNull()
     }
