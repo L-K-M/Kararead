@@ -19,11 +19,15 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
@@ -158,22 +162,26 @@ private fun SwipeRow(
     archiveIsRestore: Boolean,
     content: @Composable () -> Unit,
 ) {
-    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val haptics = LocalHapticFeedback.current
     val state = androidx.compose.material3.rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
-                SwipeToDismissBoxValue.EndToStart -> {
-                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                    onArchive?.invoke(bookmark); false
-                }
-                SwipeToDismissBoxValue.StartToEnd -> {
-                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                    onFavourite?.invoke(bookmark); false
-                }
+                SwipeToDismissBoxValue.EndToStart -> { onArchive?.invoke(bookmark); false }
+                SwipeToDismissBoxValue.StartToEnd -> { onFavourite?.invoke(bookmark); false }
                 else -> false
             }
         },
     )
+    // Haptic detent: tick the instant the swipe passes the trigger threshold
+    // (targetValue leaves Settled), so you feel that releasing will fire the
+    // action — felt mid-drag, before letting go, rather than after.
+    LaunchedEffect(state) {
+        snapshotFlow { state.targetValue }.collect { target ->
+            if (target != SwipeToDismissBoxValue.Settled) {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+        }
+    }
     SwipeToDismissBox(
         state = state,
         enableDismissFromStartToEnd = onFavourite != null,
