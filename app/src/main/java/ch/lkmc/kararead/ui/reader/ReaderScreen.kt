@@ -315,14 +315,6 @@ fun ReaderScreen(
                             else LocalContentColorSafe(),
                         )
                     }
-                    IconButton(onClick = viewModel::toggleArchived) {
-                        Icon(
-                            if (state.archived) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
-                            contentDescription = if (state.archived) "Mark unread" else "Mark as read",
-                            tint = if (state.archived) MaterialTheme.colorScheme.primary
-                            else LocalContentColorSafe(),
-                        )
-                    }
                     IconButton(onClick = { showControls = true }) {
                         Icon(Icons.Filled.TextFields, contentDescription = "Reading settings")
                     }
@@ -331,6 +323,17 @@ fun ReaderScreen(
                             Icon(Icons.Filled.MoreVert, contentDescription = "More")
                         }
                         DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(if (state.archived) "Mark as unread" else "Mark as read") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (state.archived) Icons.Filled.RadioButtonUnchecked
+                                        else Icons.Filled.CheckCircle,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = { overflowOpen = false; viewModel.toggleArchived() },
+                            )
                             if (viewModel.canListen && !speech.active) {
                                 DropdownMenuItem(
                                     text = { Text("Listen") },

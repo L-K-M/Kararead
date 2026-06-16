@@ -2,6 +2,7 @@ package ch.lkmc.kararead.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -90,13 +91,25 @@ fun BookmarkList(
                         key = items.itemKey { it.id },
                     ) { index ->
                         val bookmark = items[index] ?: return@items
-                        if (enableSwipe) {
-                            SwipeRow(
-                                bookmark = bookmark,
-                                onArchive = onArchive,
-                                onFavourite = onFavourite,
-                                archiveIsRestore = archiveIsRestore,
-                            ) {
+                        // animateItem gives archived/removed rows a fade-out and
+                        // slides the rest up, instead of an abrupt disappearance.
+                        Column(Modifier.animateItem()) {
+                            if (enableSwipe) {
+                                SwipeRow(
+                                    bookmark = bookmark,
+                                    onArchive = onArchive,
+                                    onFavourite = onFavourite,
+                                    archiveIsRestore = archiveIsRestore,
+                                ) {
+                                    BookmarkCard(
+                                        bookmark = bookmark,
+                                        progress = progressFor(bookmark.id),
+                                        offline = isCached(bookmark.id),
+                                        readingTimeOverride = readingTimeFor(bookmark.id),
+                                        onClick = { onOpen(bookmark.id) },
+                                    )
+                                }
+                            } else {
                                 BookmarkCard(
                                     bookmark = bookmark,
                                     progress = progressFor(bookmark.id),
@@ -105,18 +118,10 @@ fun BookmarkList(
                                     onClick = { onOpen(bookmark.id) },
                                 )
                             }
-                        } else {
-                            BookmarkCard(
-                                bookmark = bookmark,
-                                progress = progressFor(bookmark.id),
-                                offline = isCached(bookmark.id),
-                                readingTimeOverride = readingTimeFor(bookmark.id),
-                                onClick = { onOpen(bookmark.id) },
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                             )
                         }
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                        )
                     }
 
                     if (items.loadState.append is LoadState.Loading) {

@@ -92,8 +92,13 @@ class LibraryViewModel @Inject constructor(
             .cachedIn(viewModelScope)
 
     val bookmarks: Flow<PagingData<Bookmark>> =
-        combine(pagingFlow, hiddenIds) { data, hidden ->
-            data.filter { it.id !in hidden }
+        combine(pagingFlow, hiddenIds, tab) { data, hidden, t ->
+            data.filter { bm ->
+                // The Read-later list is a reading queue, so drop articles already
+                // archived (read) — the Karakeep list endpoint returns them since
+                // list membership is independent of archived state.
+                bm.id !in hidden && !(t == LibraryTab.READ_LATER && bm.archived)
+            }
         }
 
     init {

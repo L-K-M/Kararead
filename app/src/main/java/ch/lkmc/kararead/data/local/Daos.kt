@@ -58,8 +58,9 @@ interface CachedArticleDao {
     /**
      * Recently *opened* articles, newest first: cached articles that also have a
      * reading-progress row (i.e. the user actually read them). Joining on
-     * reading_progress excludes offline-prefetched-but-unopened articles, and
-     * archived articles drop out because their cache is deleted on archive.
+     * reading_progress excludes offline-prefetched-but-unopened articles. Archived
+     * (read) articles are excluded explicitly — opening one from the Archive tab
+     * re-caches it, which would otherwise resurrect it in "jump back in".
      */
     @Query(
         """
@@ -67,6 +68,7 @@ interface CachedArticleDao {
                p.fraction AS fraction, p.updatedAt AS lastOpened
         FROM reading_progress p
         INNER JOIN cached_article c ON c.bookmarkId = p.bookmarkId
+        WHERE c.archived = 0
         ORDER BY p.updatedAt DESC
         LIMIT :limit
         """,
