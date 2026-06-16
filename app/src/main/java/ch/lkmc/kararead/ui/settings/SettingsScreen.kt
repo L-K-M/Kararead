@@ -177,15 +177,15 @@ fun SettingsScreen(
             SettingRow(
                 title = "Export folder",
                 subtitle = state.highlightsFolder
-                    ?.let { "Saving highlights to ${folderDisplayName(it)}" }
-                    ?: "Choose a folder to save highlights into — e.g. a Syncthing-synced directory.",
+                    ?.let { "Auto-saving highlights to ${folderDisplayName(it)} as you make them" }
+                    ?: "Choose a folder to auto-save highlights into — e.g. a Syncthing-synced directory.",
                 onClick = { folderPicker.launch(state.highlightsFolder?.let { Uri.parse(it) }) },
                 actionLabel = if (state.highlightsFolder != null) "Change" else "Choose",
             )
             if (state.highlightsFolder != null) {
                 SettingRow(
                     title = "Clear export folder",
-                    subtitle = "Stop saving highlights to a folder.",
+                    subtitle = "Stop auto-saving highlights to a folder.",
                     onClick = { viewModel.setHighlightsFolder(null) },
                     actionLabel = "Clear",
                 )

@@ -113,6 +113,9 @@ class ReaderViewModel @Inject constructor(
     private var saveJob: Job? = null
     private var lastSaved = 0f
 
+    // Debounces background auto-save of highlights to the export folder.
+    private var autoSaveJob: Job? = null
+
     // The most recent progress reported by the WebView, so we can flush it on
     // exit even if the debounce window hadn't elapsed.
     private var pendingFraction = 0f
@@ -252,6 +255,7 @@ class ReaderViewModel @Inject constructor(
                 .onSuccess { created ->
                     _highlights.update { it + created }
                     _messages.trySend("Highlighted")
+                    scheduleHighlightAutoSave()
                 }
                 .onFailure {
                     _messages.trySend("Couldn't save highlight — try again")
@@ -264,6 +268,7 @@ class ReaderViewModel @Inject constructor(
         val trimmed = note.trim()
         // Optimistic local update so the sheet reflects the change immediately.
         _highlights.update { list -> list.map { if (it.id == id) it.copy(note = trimmed) else it } }
+        scheduleHighlightAutoSave()
         viewModelScope.launch {
             runCatching { repository.updateHighlightNote(id, trimmed) }
                 .onSuccess { updated -> _highlights.update { l -> l.map { if (it.id == id) updated else it } } }
@@ -273,6 +278,7 @@ class ReaderViewModel @Inject constructor(
 
     fun removeHighlight(id: String) {
         _highlights.update { list -> list.filterNot { it.id == id } }
+        scheduleHighlightAutoSave()
         viewModelScope.launch { runCatching { repository.deleteHighlight(id) } }
     }
 
@@ -288,6 +294,32 @@ class ReaderViewModel @Inject constructor(
             url = bm?.url,
             highlights = hs,
         )
+    }
+
+    /**
+     * If an export folder is configured, write this article's highlights into it
+     * in the background whenever they change, so the folder (e.g. a Syncthing
+     * directory) always mirrors the latest highlights. Debounced and silent; runs
+     * on [appScope] so a change made just before leaving still lands. Writing an
+     * empty (title-only) document when the last highlight is removed keeps the
+     * file in sync rather than leaving stale content.
+     */
+    private fun scheduleHighlightAutoSave() {
+        autoSaveJob?.cancel()
+        autoSaveJob = appScope.launch {
+            delay(800)
+            val folder = settings.highlightsFolderUriOnce()
+            if (folder.isNullOrBlank()) return@launch
+            val bm = _state.value.article?.bookmark ?: return@launch
+            val md = ch.lkmc.kararead.util.highlightsToMarkdown(
+                title = bm.displayTitle,
+                url = bm.url,
+                highlights = _highlights.value,
+            )
+            withContext(Dispatchers.IO) {
+                ch.lkmc.kararead.util.saveMarkdownToFolder(appContext, Uri.parse(folder), bm.displayTitle, md)
+            }
+        }
     }
 
     /**
