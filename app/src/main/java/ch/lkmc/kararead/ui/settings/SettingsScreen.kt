@@ -1,5 +1,9 @@
 package ch.lkmc.kararead.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.lkmc.kararead.data.model.AppThemeMode
 import ch.lkmc.kararead.ui.theme.AccentPresets
 import ch.lkmc.kararead.ui.theme.DefaultAccent
+import ch.lkmc.kararead.util.folderDisplayName
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,6 +151,42 @@ fun SettingsScreen(
                     title = "Clear downloads",
                     subtitle = "Remove all cached articles from this device.",
                     onClick = viewModel::clearCache,
+                    actionLabel = "Clear",
+                )
+            }
+
+            HorizontalDivider()
+            SectionHeader("Highlights")
+            // OPEN_DOCUMENT_TREE: the user grants a folder once; we persist the
+            // permission so highlights can be saved there (e.g. a Syncthing dir)
+            // without a picker each time.
+            val folderPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocumentTree(),
+            ) { uri ->
+                if (uri != null) {
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                        )
+                    }
+                    viewModel.setHighlightsFolder(uri.toString())
+                }
+            }
+            SettingRow(
+                title = "Export folder",
+                subtitle = state.highlightsFolder
+                    ?.let { "Saving highlights to ${folderDisplayName(it)}" }
+                    ?: "Choose a folder to save highlights into — e.g. a Syncthing-synced directory.",
+                onClick = { folderPicker.launch(state.highlightsFolder?.let { Uri.parse(it) }) },
+                actionLabel = if (state.highlightsFolder != null) "Change" else "Choose",
+            )
+            if (state.highlightsFolder != null) {
+                SettingRow(
+                    title = "Clear export folder",
+                    subtitle = "Stop saving highlights to a folder.",
+                    onClick = { viewModel.setHighlightsFolder(null) },
                     actionLabel = "Clear",
                 )
             }

@@ -56,6 +56,7 @@ class SettingsRepository @Inject constructor(
         val OFFLINE_ENABLED = booleanPreferencesKey("offline_enabled")
         val OFFLINE_WIFI_ONLY = booleanPreferencesKey("offline_wifi_only")
         val OFFLINE_KEEP_COUNT = intPreferencesKey("offline_keep_count")
+        val HIGHLIGHTS_FOLDER_URI = stringPreferencesKey("highlights_folder_uri")
     }
 
     // Combine BOTH stores so the flow re-emits when either the URL/fallback or
@@ -200,6 +201,23 @@ class SettingsRepository @Inject constructor(
         val id = p[Keys.READ_LATER_LIST_ID]
         val name = p[Keys.READ_LATER_LIST_NAME]
         if (id != null && name != null) id to name else null
+    }
+
+    /**
+     * SAF tree URI (as a string) of the folder highlights are exported into —
+     * e.g. a Syncthing-synced directory the user grants once. Null when unset.
+     */
+    val highlightsFolderUri: Flow<String?> =
+        context.settingsStore.data.map { it[Keys.HIGHLIGHTS_FOLDER_URI] }
+
+    suspend fun highlightsFolderUriOnce(): String? =
+        context.settingsStore.data.first()[Keys.HIGHLIGHTS_FOLDER_URI]
+
+    suspend fun setHighlightsFolderUri(uri: String?) {
+        context.settingsStore.edit {
+            if (uri.isNullOrBlank()) it.remove(Keys.HIGHLIGHTS_FOLDER_URI)
+            else it[Keys.HIGHLIGHTS_FOLDER_URI] = uri
+        }
     }
 
     suspend fun setReadLaterList(id: String?, name: String?) {

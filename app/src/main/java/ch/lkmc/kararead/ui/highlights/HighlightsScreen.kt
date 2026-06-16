@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,6 +44,12 @@ fun HighlightsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.messages.collect {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -54,10 +61,13 @@ fun HighlightsScreen(
                 },
                 actions = {
                     if (state.groups.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.saveToFolder() }) {
+                            Icon(Icons.Filled.SaveAlt, contentDescription = "Save highlights to folder")
+                        }
                         IconButton(onClick = {
                             viewModel.exportMarkdown()?.let { shareText(context, it, "Highlights") }
                         }) {
-                            Icon(Icons.Filled.IosShare, contentDescription = "Export all highlights")
+                            Icon(Icons.Filled.IosShare, contentDescription = "Share all highlights")
                         }
                     }
                 },

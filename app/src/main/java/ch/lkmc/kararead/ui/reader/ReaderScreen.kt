@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.outlined.StarBorder
@@ -363,7 +364,7 @@ fun ReaderScreen(
                                     onClick = { overflowOpen = false; showHighlights = true },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Export highlights") },
+                                    text = { Text("Share highlights") },
                                     leadingIcon = {
                                         Icon(Icons.Filled.IosShare, contentDescription = null)
                                     },
@@ -372,6 +373,16 @@ fun ReaderScreen(
                                         viewModel.highlightsMarkdown()?.let {
                                             shareText(context, it, state.article?.bookmark?.displayTitle)
                                         }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Save highlights to folder") },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.SaveAlt, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        overflowOpen = false
+                                        viewModel.saveHighlightsToFolder()
                                     },
                                 )
                             }

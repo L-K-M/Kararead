@@ -27,6 +27,8 @@ data class SettingsUiState(
     val cachedCount: Int = 0,
     val offline: OfflinePreferences = OfflinePreferences(),
     val stats: ReadingStats = ReadingStats(),
+    /** SAF tree URI (string) of the highlights export folder, or null if unset. */
+    val highlightsFolder: String? = null,
 )
 
 @HiltViewModel
@@ -59,9 +61,19 @@ class SettingsViewModel @Inject constructor(
             repository.cachedIds().map { it.size },
             repository.readingStats(),
             settings.accentColor,
-        ) { s, cachedCount, stats, accent ->
-            s.copy(cachedCount = cachedCount, stats = stats, accentColor = accent)
+            settings.highlightsFolderUri,
+        ) { s, cachedCount, stats, accent, folder ->
+            s.copy(
+                cachedCount = cachedCount,
+                stats = stats,
+                accentColor = accent,
+                highlightsFolder = folder,
+            )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
+
+    fun setHighlightsFolder(uri: String?) {
+        viewModelScope.launch { settings.setHighlightsFolderUri(uri) }
+    }
 
     fun setThemeMode(mode: AppThemeMode) {
         viewModelScope.launch { settings.setAppThemeMode(mode) }

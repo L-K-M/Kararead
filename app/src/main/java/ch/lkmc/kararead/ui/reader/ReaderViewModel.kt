@@ -1,5 +1,7 @@
 package ch.lkmc.kararead.ui.reader
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,9 +20,12 @@ import ch.lkmc.kararead.tts.ArticleSpeaker
 import ch.lkmc.kararead.tts.SpeechState
 import ch.lkmc.kararead.tts.VoiceInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +58,7 @@ class ReaderViewModel @Inject constructor(
     val assetLoader: AssetLoader,
     private val speaker: ArticleSpeaker,
     @ApplicationScope private val appScope: CoroutineScope,
+    @ApplicationContext private val appContext: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -282,6 +288,33 @@ class ReaderViewModel @Inject constructor(
             url = bm?.url,
             highlights = hs,
         )
+    }
+
+    /**
+     * Save this article's highlights as Markdown into the user's configured
+     * export folder (e.g. a Syncthing directory). Reports the outcome via
+     * [messages]; nudges to Settings when no folder is set yet.
+     */
+    fun saveHighlightsToFolder() {
+        val md = highlightsMarkdown()
+        if (md == null) {
+            _messages.trySend("No highlights to save")
+            return
+        }
+        val title = _state.value.article?.bookmark?.displayTitle ?: "Highlights"
+        viewModelScope.launch {
+            val folder = settings.highlightsFolderUriOnce()
+            if (folder.isNullOrBlank()) {
+                _messages.trySend("Set an export folder in Settings first")
+                return@launch
+            }
+            val saved = withContext(Dispatchers.IO) {
+                ch.lkmc.kararead.util.saveMarkdownToFolder(appContext, Uri.parse(folder), title, md)
+            }
+            _messages.trySend(
+                if (saved != null) "Saved \"$saved\"" else "Couldn't save — re-pick the folder in Settings",
+            )
+        }
     }
 
     // --- Text-to-speech ---
