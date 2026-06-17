@@ -115,7 +115,7 @@ fun BookmarkList(
             }
 
             else -> {
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     items(
                         count = items.itemCount,
                         key = items.itemKey { it.id },
