@@ -100,16 +100,25 @@ class KarakeepRepository @Inject constructor(
 
     suspend fun getArticle(id: String, forceRefresh: Boolean = false): ReaderArticle {
         if (!forceRefresh) {
-            cacheDao.get(id)?.let { return it.toReaderArticle() }
+            // Only serve a cached copy that actually has content. An article that
+            // was still processing when first opened is fetched empty; caching and
+            // then serving that empty copy would pin the "no readable content"
+            // placeholder forever — so treat a content-less cache row as a miss
+            // and re-fetch, letting it recover once the server finishes.
+            cacheDao.get(id)?.takeIf { !it.html.isNullOrBlank() }?.let { return it.toReaderArticle() }
         }
         return try {
             val dto = api().getBookmark(id, includeContent = true)
             val article = dto.toReaderArticle(assetResolver)
-            runCatching { cacheDao.upsert(article.toCacheEntity(System.currentTimeMillis())) }
+            // Don't cache an unprocessed (content-less) article, or reopening would
+            // keep hitting the empty cache instead of re-fetching.
+            if (!article.htmlContent.isNullOrBlank()) {
+                runCatching { cacheDao.upsert(article.toCacheEntity(System.currentTimeMillis())) }
+            }
             article
         } catch (e: Exception) {
-            // Offline fallback to any cached copy.
-            cacheDao.get(id)?.toReaderArticle() ?: throw e
+            // Offline fallback to any cached copy that has content.
+            cacheDao.get(id)?.takeIf { !it.html.isNullOrBlank() }?.toReaderArticle() ?: throw e
         }
     }
 

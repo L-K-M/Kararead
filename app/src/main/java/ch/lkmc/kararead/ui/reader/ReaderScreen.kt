@@ -253,6 +253,14 @@ fun ReaderScreen(
                 actionLabel = "Retry",
                 onAction = { viewModel.load(forceRefresh = true) },
             )
+            state.article != null && state.article!!.htmlContent.isNullOrBlank() -> MessageState(
+                title = "Still processing",
+                subtitle = "This article hasn't finished processing on the server yet. " +
+                    "Try again in a moment, or open the original from the menu.",
+                emoji = "⏳",
+                actionLabel = "Try again",
+                onAction = { viewModel.load(forceRefresh = true) },
+            )
             state.article != null -> {
                 ReaderWebView(
                     article = state.article!!,
