@@ -37,7 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import ch.lkmc.kararead.data.model.Bookmark
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Shared, reusable list of bookmarks backed by Paging 3, with swipe actions,
@@ -75,15 +76,28 @@ fun BookmarkList(
             if (pastThreshold) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         }
     }
-    // When a pull-to-refresh finishes, reveal the freshly-loaded rows: Paging
-    // inserts new items at the top but LazyColumn keeps the old scroll anchor,
-    // leaving them hidden above the fold. Snap back to the top so they show.
+    // Reveal the rows a pull-to-refresh prepends. Two things hide them: Paging
+    // applies the refreshed page a beat *after* the loading state clears (a
+    // race), and the LazyColumn keeps its old scroll anchor, so the new rows
+    // land above the fold. So: remember the top item when a refresh starts, and
+    // once it finishes wait (briefly) for the top item to actually change before
+    // scrolling up to it. If nothing new arrives, bail without yanking the list.
     var wasRefreshing by remember { mutableStateOf(false) }
+    var topIdBeforeRefresh by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(refreshing) {
-        if (wasRefreshing && !refreshing && items.itemCount > 0) {
-            listState.animateScrollToItem(0)
+        if (refreshing) {
+            if (!wasRefreshing) topIdBeforeRefresh = items.itemSnapshotList.firstOrNull()?.id
+            wasRefreshing = true
+            return@LaunchedEffect
         }
-        wasRefreshing = refreshing
+        if (!wasRefreshing) return@LaunchedEffect
+        wasRefreshing = false
+        if (items.itemCount == 0) return@LaunchedEffect
+        val landed = withTimeoutOrNull(2000L) {
+            snapshotFlow { items.itemSnapshotList.firstOrNull()?.id }
+                .first { it != null && it != topIdBeforeRefresh }
+        }
+        if (landed != null) listState.animateScrollToItem(0)
     }
 
     PullToRefreshBox(
