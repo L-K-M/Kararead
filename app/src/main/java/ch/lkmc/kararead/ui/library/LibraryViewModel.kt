@@ -76,6 +76,23 @@ class LibraryViewModel @Inject constructor(
     val recents: StateFlow<List<RecentArticle>> =
         repository.recentlyOpened().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /**
+     * Downloaded articles for the current tab, shown when the listing can't be
+     * fetched (offline). Filtered to match the tab the same way the live queues
+     * are: unread for Inbox/Read-later, favourited for Favourites, archived for
+     * Archive. Optimistically-hidden ids are dropped too, for consistency.
+     */
+    val offlineBookmarks: StateFlow<List<Bookmark>> =
+        combine(repository.cachedBookmarks(), tab, hiddenIds) { cached, t, hidden ->
+            cached.filter { bm ->
+                bm.id !in hidden && when (t) {
+                    LibraryTab.FAVOURITES -> bm.favourited
+                    LibraryTab.ARCHIVE -> bm.archived
+                    LibraryTab.INBOX, LibraryTab.READ_LATER -> !bm.archived
+                }
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     private val pagingFlow: Flow<PagingData<Bookmark>> =
         combine(tab, sort, readLater) { t, s, rl -> Triple(t, s, rl) }
             .flatMapLatest { (t, s, rl) ->

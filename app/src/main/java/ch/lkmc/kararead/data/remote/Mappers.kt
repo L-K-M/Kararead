@@ -1,6 +1,7 @@
 package ch.lkmc.kararead.data.remote
 
 import ch.lkmc.kararead.data.local.CachedArticleEntity
+import ch.lkmc.kararead.data.local.CachedBookmarkRow
 import ch.lkmc.kararead.data.model.Bookmark
 import ch.lkmc.kararead.data.model.ContentType
 import ch.lkmc.kararead.data.model.Highlight
@@ -138,6 +139,27 @@ fun CachedArticleEntity.toReaderArticle(): ReaderArticle = ReaderArticle(
     ),
     htmlContent = html,
     textContent = text,
+)
+
+/** Cached-article metadata → domain [Bookmark], for the offline list fallback. */
+fun CachedBookmarkRow.toBookmark(): Bookmark = Bookmark(
+    id = bookmarkId,
+    title = title,
+    url = url,
+    siteName = siteName,
+    author = author,
+    excerpt = excerpt,
+    faviconUrl = faviconUrl,
+    imageUrl = imageUrl,
+    createdAt = createdAt,
+    datePublished = datePublished,
+    archived = archived,
+    favourited = favourited,
+    tags = emptyList(),
+    note = null,
+    summary = null,
+    readingTimeMinutes = readingTimeMinutes,
+    contentType = ContentType.LINK,
 )
 
 fun ListDto.toDomain(): KarakeepList = KarakeepList(

@@ -22,6 +22,7 @@ import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.remote.KarakeepApi
 import ch.lkmc.kararead.data.remote.dto.UpdateBookmarkRequest
 import ch.lkmc.kararead.data.remote.dto.UpdateHighlightRequest
+import ch.lkmc.kararead.data.remote.toBookmark
 import ch.lkmc.kararead.data.remote.toCacheEntity
 import ch.lkmc.kararead.data.remote.toDomain
 import ch.lkmc.kararead.data.remote.toReaderArticle
@@ -277,6 +278,14 @@ class KarakeepRepository @Inject constructor(
 
     /** Ids of articles currently available offline, for "downloaded" indicators. */
     fun cachedIds(): Flow<Set<String>> = cacheDao.observeIds().map { it.toSet() }
+
+    /**
+     * Every downloaded article as a [Bookmark] (metadata only, newest first).
+     * Backs the library's offline fallback so cached articles stay readable when
+     * the server is unreachable, instead of a "couldn't load" error.
+     */
+    fun cachedBookmarks(): Flow<List<Bookmark>> =
+        cacheDao.observeCachedBookmarks().map { rows -> rows.map { it.toBookmark() } }
 
     /** Cached reading-time hints, so list cards can show "N min" once an article
      *  has been opened (list/search responses omit content, hence reading time). */

@@ -56,6 +56,21 @@ interface CachedArticleDao {
     fun observeReadingTimes(): Flow<List<ReadingTimeRow>>
 
     /**
+     * Metadata of every cached article (no html/text body), newest first. Backs
+     * the library's offline fallback: when a listing can't be fetched, the
+     * downloaded articles are shown from here instead of a "couldn't load" error.
+     */
+    @Query(
+        """
+        SELECT bookmarkId, title, url, siteName, author, excerpt, imageUrl, faviconUrl,
+               createdAt, datePublished, readingTimeMinutes, archived, favourited
+        FROM cached_article
+        ORDER BY createdAt DESC
+        """,
+    )
+    fun observeCachedBookmarks(): Flow<List<CachedBookmarkRow>>
+
+    /**
      * Recently *opened* articles, newest first: cached articles that also have a
      * reading-progress row (i.e. the user actually read them). Joining on
      * reading_progress excludes offline-prefetched-but-unopened articles. Archived
@@ -83,6 +98,23 @@ interface CachedArticleDao {
 data class ReadingTimeRow(
     val bookmarkId: String,
     val readingTimeMinutes: Int,
+)
+
+/** Projection of a cached article's metadata (no body), for the offline list. */
+data class CachedBookmarkRow(
+    val bookmarkId: String,
+    val title: String,
+    val url: String?,
+    val siteName: String?,
+    val author: String?,
+    val excerpt: String?,
+    val imageUrl: String?,
+    val faviconUrl: String?,
+    val createdAt: Long,
+    val datePublished: Long?,
+    val readingTimeMinutes: Int?,
+    val archived: Boolean,
+    val favourited: Boolean,
 )
 
 /** Projection for the library's "recently opened" strip. */
