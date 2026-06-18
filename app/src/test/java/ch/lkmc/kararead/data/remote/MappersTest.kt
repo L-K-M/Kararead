@@ -81,6 +81,33 @@ class MappersTest {
     }
 
     @Test
+    fun `cached bookmark row maps to domain bookmark for offline list`() {
+        val row = ch.lkmc.kararead.data.local.CachedBookmarkRow(
+            bookmarkId = "9",
+            title = "Cached title",
+            url = "https://x.test/a",
+            siteName = "Example",
+            author = "Ann",
+            excerpt = "An excerpt",
+            imageUrl = "https://cdn/x.png",
+            faviconUrl = null,
+            createdAt = 1704067200000L,
+            datePublished = null,
+            readingTimeMinutes = 7,
+            archived = false,
+            favourited = true,
+        )
+        val bm = row.toBookmark()
+        assertEquals("9", bm.id)
+        assertEquals("Cached title", bm.displayTitle)
+        assertEquals("Example", bm.siteName)
+        assertEquals(7, bm.readingTimeMinutes)
+        assertTrue(bm.favourited)
+        assertFalse(bm.archived)
+        assertEquals(ContentType.LINK, bm.contentType)
+    }
+
+    @Test
     fun `maps a highlight dto to domain`() {
         val hl = HighlightDto(
             id = "h1", bookmarkId = "b1", startOffset = 10, endOffset = 25,

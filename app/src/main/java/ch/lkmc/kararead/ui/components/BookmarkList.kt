@@ -1,15 +1,22 @@
 package ch.lkmc.kararead.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.HorizontalDivider
@@ -53,6 +60,7 @@ fun BookmarkList(
     modifier: Modifier = Modifier,
     isCached: (String) -> Boolean = { false },
     readingTimeFor: (String) -> Int? = { null },
+    offlineFallback: List<Bookmark> = emptyList(),
     enableSwipe: Boolean = true,
     onArchive: ((Bookmark) -> Unit)? = null,
     onFavourite: ((Bookmark) -> Unit)? = null,
@@ -108,14 +116,29 @@ fun BookmarkList(
     ) {
         when {
             items.loadState.refresh is LoadState.Error -> {
-                val e = (items.loadState.refresh as LoadState.Error).error
-                MessageState(
-                    title = "Couldn't load",
-                    subtitle = e.message ?: "Check your connection and try again.",
-                    emoji = "⚠️",
-                    actionLabel = "Retry",
-                    onAction = { items.retry() },
-                )
+                // Offline: rather than a full-screen error, fall back to whatever
+                // articles are downloaded, under a quiet "you're offline" banner.
+                // Only show the hard error when there's nothing cached to read.
+                if (offlineFallback.isNotEmpty()) {
+                    OfflineFallbackList(
+                        bookmarks = offlineFallback,
+                        progressFor = progressFor,
+                        isCached = isCached,
+                        readingTimeFor = readingTimeFor,
+                        onOpen = onOpen,
+                        onRetry = { items.retry() },
+                        listState = listState,
+                    )
+                } else {
+                    val e = (items.loadState.refresh as LoadState.Error).error
+                    MessageState(
+                        title = "Couldn't load",
+                        subtitle = e.message ?: "Check your connection and try again.",
+                        emoji = "⚠️",
+                        actionLabel = "Retry",
+                        onAction = { items.retry() },
+                    )
+                }
             }
 
             !refreshing && items.itemCount == 0 -> {
@@ -192,6 +215,72 @@ fun BookmarkList(
 // Stable key extension for LazyPagingItems
 private fun LazyPagingItems<Bookmark>.itemKey(key: (Bookmark) -> Any): (Int) -> Any = { index ->
     this[index]?.let(key) ?: "placeholder-$index"
+}
+
+/**
+ * Read-only list of downloaded articles shown when the live listing can't be
+ * fetched. Tapping a row opens it from cache; a quiet banner up top notes the
+ * offline state and offers a retry. Swipe actions are omitted on purpose —
+ * archive/favourite need the network and would only fail here.
+ */
+@Composable
+private fun OfflineFallbackList(
+    bookmarks: List<Bookmark>,
+    progressFor: (String) -> Float,
+    isCached: (String) -> Boolean,
+    readingTimeFor: (String) -> Int?,
+    onOpen: (String) -> Unit,
+    onRetry: () -> Unit,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+) {
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        item { OfflineBanner(onRetry = onRetry) }
+        items(bookmarks, key = { it.id }) { bookmark ->
+            Column {
+                BookmarkCard(
+                    bookmark = bookmark,
+                    progress = progressFor(bookmark.id),
+                    offline = isCached(bookmark.id),
+                    readingTimeOverride = readingTimeFor(bookmark.id),
+                    onClick = { onOpen(bookmark.id) },
+                )
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfflineBanner(onRetry: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.CloudOff,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "You're offline — showing downloaded articles",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "Retry",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(onClick = onRetry),
+        )
+    }
 }
 
 @Composable
