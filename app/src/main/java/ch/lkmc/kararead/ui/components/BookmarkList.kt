@@ -84,33 +84,40 @@ fun BookmarkList(
             if (pastThreshold) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         }
     }
-    // Reveal the rows a pull-to-refresh prepends. Two things hide them: Paging
-    // applies the refreshed page a beat *after* the loading state clears (a
-    // race), and the LazyColumn keeps its old scroll anchor, so the new rows
-    // land above the fold. So: remember the top item when a refresh starts, and
-    // once it finishes wait (briefly) for the top item to actually change before
-    // scrolling up to it. If nothing new arrives, bail without yanking the list.
-    var wasRefreshing by remember { mutableStateOf(false) }
+    // Reveal the rows a pull-to-refresh prepends. Paging keeps the LazyColumn
+    // anchored to the row that was on top, so freshly inserted rows land above
+    // the fold, out of sight. After a *user* pull-to-refresh we snap back to the
+    // top so they come into view. Only user-initiated refreshes reveal (not the
+    // initial load or tab switches, which already start at the top). We wait for
+    // the refreshed page to land — Paging applies it a beat after the loading
+    // state clears — by watching for the top row to change, then scroll up
+    // unconditionally: it reveals new rows when there are any, and is a harmless
+    // no-op otherwise, since a pull-to-refresh always begins at the top.
+    var revealAfterRefresh by remember { mutableStateOf(false) }
     var topIdBeforeRefresh by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(refreshing) {
         if (refreshing) {
-            if (!wasRefreshing) topIdBeforeRefresh = items.itemSnapshotList.firstOrNull()?.id
-            wasRefreshing = true
+            topIdBeforeRefresh = items.itemSnapshotList.firstOrNull()?.id
             return@LaunchedEffect
         }
-        if (!wasRefreshing) return@LaunchedEffect
-        wasRefreshing = false
+        if (!revealAfterRefresh) return@LaunchedEffect
+        revealAfterRefresh = false
         if (items.itemCount == 0) return@LaunchedEffect
-        val landed = withTimeoutOrNull(2000L) {
+        // Give the refreshed page a moment to land (top row changes) so we don't
+        // scroll before the new rows exist; scroll anyway if it doesn't within 2s.
+        withTimeoutOrNull(2000L) {
             snapshotFlow { items.itemSnapshotList.firstOrNull()?.id }
                 .first { it != null && it != topIdBeforeRefresh }
         }
-        if (landed != null) listState.animateScrollToItem(0)
+        listState.animateScrollToItem(0)
     }
 
     PullToRefreshBox(
         isRefreshing = refreshing,
-        onRefresh = { items.refresh() },
+        onRefresh = {
+            revealAfterRefresh = true
+            items.refresh()
+        },
         state = pullState,
         modifier = modifier.fillMaxSize(),
     ) {
