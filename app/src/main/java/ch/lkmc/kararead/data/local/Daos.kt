@@ -127,6 +127,24 @@ data class RecentArticleRow(
 )
 
 @Dao
+interface PendingOpDao {
+
+    /** Queue an op, replacing any existing one for the same bookmark+field. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(op: PendingOpEntity)
+
+    /** Oldest first, so replays preserve the order the user made them. */
+    @Query("SELECT * FROM pending_op ORDER BY createdAt ASC")
+    suspend fun all(): List<PendingOpEntity>
+
+    @Query("DELETE FROM pending_op WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("UPDATE pending_op SET attempts = :attempts WHERE id = :id")
+    suspend fun setAttempts(id: Long, attempts: Int)
+}
+
+@Dao
 interface ReadingStatsDao {
 
     @Query("SELECT * FROM reading_day WHERE date = :date")

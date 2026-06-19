@@ -1,6 +1,7 @@
 package ch.lkmc.kararead.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /** Local, client-side reading progress for an article (Karakeep has none). */
@@ -33,6 +34,36 @@ data class CachedArticleEntity(
     val favourited: Boolean = false,
     val cachedAt: Long,
 )
+
+/**
+ * A bookmark mutation (archive / favourite) made while offline, queued to be
+ * replayed against the server when connectivity returns — the "outbox". The
+ * local cache is updated optimistically when the op is queued, so lists reflect
+ * the change immediately; this row just remembers what still owes the server.
+ *
+ * One row per (bookmark, field): re-toggling the same field replaces the queued
+ * op (last write wins) via the unique index, so undo offline simply overwrites.
+ */
+@Entity(
+    tableName = "pending_op",
+    indices = [Index(value = ["bookmarkId", "type"], unique = true)],
+)
+data class PendingOpEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookmarkId: String,
+    /** Which field this op sets — [TYPE_ARCHIVED] or [TYPE_FAVOURITED]. */
+    val type: String,
+    /** The value to set the field to. */
+    val value: Boolean,
+    val createdAt: Long,
+    /** Failed online replays so far; the op is dropped once it hits the cap. */
+    val attempts: Int = 0,
+) {
+    companion object {
+        const val TYPE_ARCHIVED = "archived"
+        const val TYPE_FAVOURITED = "favourited"
+    }
+}
 
 /**
  * One row per calendar day the user read, with the seconds spent reading that

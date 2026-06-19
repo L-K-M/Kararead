@@ -128,6 +128,10 @@ fun BookmarkList(
                         onOpen = onOpen,
                         onRetry = { items.retry() },
                         listState = listState,
+                        enableSwipe = enableSwipe,
+                        onArchive = onArchive,
+                        onFavourite = onFavourite,
+                        archiveIsRestore = archiveIsRestore,
                     )
                 } else {
                     val e = (items.loadState.refresh as LoadState.Error).error
@@ -218,10 +222,11 @@ private fun LazyPagingItems<Bookmark>.itemKey(key: (Bookmark) -> Any): (Int) -> 
 }
 
 /**
- * Read-only list of downloaded articles shown when the live listing can't be
- * fetched. Tapping a row opens it from cache; a quiet banner up top notes the
- * offline state and offers a retry. Swipe actions are omitted on purpose —
- * archive/favourite need the network and would only fail here.
+ * List of downloaded articles shown when the live listing can't be fetched.
+ * Tapping a row opens it from cache; a quiet banner up top notes the offline
+ * state and offers a retry. Swipe-to-archive/favourite still work: the change is
+ * applied to the cache straight away and queued (an outbox) to sync once we're
+ * back online, so the list behaves the same offline as on.
  */
 @Composable
 private fun OfflineFallbackList(
@@ -232,18 +237,41 @@ private fun OfflineFallbackList(
     onOpen: (String) -> Unit,
     onRetry: () -> Unit,
     listState: androidx.compose.foundation.lazy.LazyListState,
+    enableSwipe: Boolean,
+    onArchive: ((Bookmark) -> Unit)?,
+    onFavourite: ((Bookmark) -> Unit)?,
+    archiveIsRestore: Boolean,
 ) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         item { OfflineBanner(onRetry = onRetry) }
         items(bookmarks, key = { it.id }) { bookmark ->
-            Column {
-                BookmarkCard(
-                    bookmark = bookmark,
-                    progress = progressFor(bookmark.id),
-                    offline = isCached(bookmark.id),
-                    readingTimeOverride = readingTimeFor(bookmark.id),
-                    onClick = { onOpen(bookmark.id) },
-                )
+            // animateItem slides the row away when an offline archive/favourite
+            // drops it from the list, instead of an abrupt disappearance.
+            Column(Modifier.animateItem()) {
+                if (enableSwipe) {
+                    SwipeRow(
+                        bookmark = bookmark,
+                        onArchive = onArchive,
+                        onFavourite = onFavourite,
+                        archiveIsRestore = archiveIsRestore,
+                    ) {
+                        BookmarkCard(
+                            bookmark = bookmark,
+                            progress = progressFor(bookmark.id),
+                            offline = isCached(bookmark.id),
+                            readingTimeOverride = readingTimeFor(bookmark.id),
+                            onClick = { onOpen(bookmark.id) },
+                        )
+                    }
+                } else {
+                    BookmarkCard(
+                        bookmark = bookmark,
+                        progress = progressFor(bookmark.id),
+                        offline = isCached(bookmark.id),
+                        readingTimeOverride = readingTimeFor(bookmark.id),
+                        onClick = { onOpen(bookmark.id) },
+                    )
+                }
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 )

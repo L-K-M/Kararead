@@ -4,6 +4,8 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import ch.lkmc.kararead.data.local.CachedArticleDao
+import ch.lkmc.kararead.data.local.PendingOpDao
+import ch.lkmc.kararead.data.local.PendingOpEntity
 import ch.lkmc.kararead.data.local.ReadingDayEntity
 import ch.lkmc.kararead.data.local.ReadingProgressDao
 import ch.lkmc.kararead.data.local.ReadingProgressEntity
@@ -28,6 +30,7 @@ import ch.lkmc.kararead.data.remote.toDomain
 import ch.lkmc.kararead.data.remote.toReaderArticle
 import ch.lkmc.kararead.data.paging.BookmarksPagingSource
 import ch.lkmc.kararead.reader.AssetLoader
+import ch.lkmc.kararead.work.PendingOpSync
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.util.computeReadingStats
 import kotlinx.coroutines.flow.Flow
@@ -44,12 +47,18 @@ sealed interface ConnectionResult {
     data class Failure(val message: String) : ConnectionResult
 }
 
+/** Drop a queued offline op after this many failed online replays, so a change
+ *  the server keeps rejecting (e.g. a since-deleted bookmark) can't loop forever. */
+private const val MAX_SYNC_ATTEMPTS = 5
+
 @Singleton
 class KarakeepRepository @Inject constructor(
     private val apiProvider: ApiProvider,
     private val progressDao: ReadingProgressDao,
     private val cacheDao: CachedArticleDao,
     private val statsDao: ReadingStatsDao,
+    private val pendingOpDao: PendingOpDao,
+    private val pendingOpSync: PendingOpSync,
     private val assetLoader: AssetLoader,
 ) {
     private fun api(): KarakeepApi = apiProvider.api()
@@ -133,17 +142,76 @@ class KarakeepRepository @Inject constructor(
     // --- Mutations ---
 
     suspend fun setArchived(id: String, archived: Boolean) {
-        api().updateBookmark(id, UpdateBookmarkRequest(archived = archived))
-        // Uncache on read: once an article is archived (done reading) it leaves
-        // the offline queue, so drop its cached copy to free space.
-        if (archived) {
-            runCatching { cacheDao.delete(id) }
-            _archivedIds.tryEmit(id)
+        // Optimistically reflect the change in the cache so offline/cached lists
+        // update at once; the live listing will agree once it (re)loads.
+        cacheDao.get(id)?.let { runCatching { cacheDao.upsert(it.copy(archived = archived)) } }
+        val synced = runCatching {
+            api().updateBookmark(id, UpdateBookmarkRequest(archived = archived))
+        }.isSuccess
+        if (synced) {
+            // Uncache on read: once an article is archived (done reading) it leaves
+            // the offline queue, so drop its cached copy to free space.
+            if (archived) runCatching { cacheDao.delete(id) }
+        } else {
+            // Offline (or transient): queue the change to replay when back online.
+            queueOp(id, PendingOpEntity.TYPE_ARCHIVED, archived)
         }
+        if (archived) _archivedIds.tryEmit(id)
     }
 
     suspend fun setFavourited(id: String, favourited: Boolean) {
-        api().updateBookmark(id, UpdateBookmarkRequest(favourited = favourited))
+        cacheDao.get(id)?.let { runCatching { cacheDao.upsert(it.copy(favourited = favourited)) } }
+        val synced = runCatching {
+            api().updateBookmark(id, UpdateBookmarkRequest(favourited = favourited))
+        }.isSuccess
+        if (!synced) queueOp(id, PendingOpEntity.TYPE_FAVOURITED, favourited)
+    }
+
+    /** Add (or overwrite) an outbox entry and ask for a flush when online. */
+    private suspend fun queueOp(id: String, type: String, value: Boolean) {
+        pendingOpDao.upsert(
+            PendingOpEntity(
+                bookmarkId = id,
+                type = type,
+                value = value,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+        pendingOpSync.schedule()
+    }
+
+    /**
+     * Replay queued offline archive/favourite changes against the server, oldest
+     * first. Confirmed ops are dropped (archives also uncache, as if done live);
+     * ones that still fail keep their place and bump their attempt count, and are
+     * abandoned after [MAX_SYNC_ATTEMPTS]. Returns true once the queue is empty.
+     */
+    suspend fun flushPendingOps(): Boolean {
+        var allCleared = true
+        for (op in pendingOpDao.all()) {
+            val request = when (op.type) {
+                PendingOpEntity.TYPE_ARCHIVED -> UpdateBookmarkRequest(archived = op.value)
+                PendingOpEntity.TYPE_FAVOURITED -> UpdateBookmarkRequest(favourited = op.value)
+                else -> { pendingOpDao.delete(op.id); continue }
+            }
+            val synced = runCatching { api().updateBookmark(op.bookmarkId, request) }.isSuccess
+            if (synced) {
+                pendingOpDao.delete(op.id)
+                if (op.type == PendingOpEntity.TYPE_ARCHIVED && op.value) {
+                    runCatching { cacheDao.delete(op.bookmarkId) }
+                    _archivedIds.tryEmit(op.bookmarkId)
+                }
+            } else {
+                val attempts = op.attempts + 1
+                if (attempts >= MAX_SYNC_ATTEMPTS) {
+                    pendingOpDao.delete(op.id)
+                } else {
+                    pendingOpDao.setAttempts(op.id, attempts)
+                    allCleared = false
+                }
+            }
+        }
+        return allCleared
     }
 
     /** Save a new link to Karakeep, optionally adding it to a list. Returns the new id. */

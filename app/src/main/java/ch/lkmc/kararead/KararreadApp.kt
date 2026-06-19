@@ -10,6 +10,7 @@ import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.work.CacheCleanupWorker
 import ch.lkmc.kararead.work.OfflineSync
+import ch.lkmc.kararead.work.PendingOpSync
 import java.util.concurrent.TimeUnit
 import coil.ImageLoader
 import coil.ImageLoaderFactory
@@ -29,6 +30,7 @@ class KararreadApp : Application(), Configuration.Provider, ImageLoaderFactory {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var imageLoader: ImageLoader
     @Inject lateinit var offlineSync: OfflineSync
+    @Inject lateinit var pendingOpSync: PendingOpSync
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -47,6 +49,9 @@ class KararreadApp : Application(), Configuration.Provider, ImageLoaderFactory {
                 .collect {}
         }
         scheduleCacheCleanup()
+        // Replay any offline archive/favourite changes left over from last run
+        // as soon as there's a connection.
+        pendingOpSync.schedule()
     }
 
     /** Trim the offline article cache periodically so it can't grow forever. */
