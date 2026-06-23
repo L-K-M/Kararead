@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.outlined.StarBorder
@@ -61,6 +64,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -106,7 +110,16 @@ fun ReaderScreen(
     var showHighlights by remember { mutableStateOf(false) }
     var pendingHighlightId by remember { mutableStateOf<String?>(null) }
     var showVoicePicker by remember { mutableStateOf(false) }
+    var showFind by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var findMatches by remember { mutableStateOf(0) }
+    var findActive by remember { mutableStateOf(0) }
     val pager = remember { ReaderPager() }
+    val finder = remember { ReaderFinder() }
+    finder.onResult = { ordinal, count ->
+        findActive = ordinal
+        findMatches = count
+    }
     // Measured height of the end-of-article "Done · Next" badge, so paging can
     // avoid scrolling text behind it (see pageCoverCssPx below).
     var finishFabHeightPx by remember { mutableStateOf(0) }
@@ -191,6 +204,17 @@ fun ReaderScreen(
         }
     }
 
+    // While the find bar is open, the system back gesture closes it (and clears
+    // the matches) rather than leaving the article.
+    androidx.activity.compose.BackHandler(enabled = showFind) {
+        showFind = false
+        findQuery = ""
+        findMatches = 0
+        findActive = 0
+        finder.clear()
+        chromeVisible = true
+    }
+
     androidx.compose.runtime.LaunchedEffect(prefs.keepScreenOn) {
         view.keepScreenOn = prefs.keepScreenOn
     }
@@ -272,15 +296,16 @@ fun ReaderScreen(
                     onHighlightTap = { id -> pendingHighlightId = id },
                     highlightsJson = highlightsJson,
                     pager = pager,
+                    finder = finder,
                     pageBottomCoverPx = pageCoverCssPx,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
         }
 
-        // Top chrome (auto-hides while reading down).
+        // Top chrome (auto-hides while reading down; yields to the find bar).
         AnimatedVisibility(
-            visible = chromeVisible,
+            visible = chromeVisible && !showFind,
             enter = slideInVertically { -it } + fadeIn(),
             exit = slideOutVertically { -it } + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
@@ -335,6 +360,11 @@ fun ReaderScreen(
                             Icon(Icons.Filled.MoreVert, contentDescription = "More")
                         }
                         DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Find in article") },
+                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                                onClick = { overflowOpen = false; showFind = true },
+                            )
                             DropdownMenuItem(
                                 text = { Text(if (state.archived) "Mark as unread" else "Mark as read") },
                                 leadingIcon = {
@@ -414,6 +444,34 @@ fun ReaderScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                 ),
+            )
+        }
+
+        // Find-in-article bar — takes the top slot in place of the app bar.
+        AnimatedVisibility(
+            visible = showFind,
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            FindBar(
+                query = findQuery,
+                matches = findMatches,
+                active = findActive,
+                onQueryChange = {
+                    findQuery = it
+                    finder.find(it)
+                },
+                onNext = { finder.next() },
+                onPrev = { finder.previous() },
+                onClose = {
+                    showFind = false
+                    findQuery = ""
+                    findMatches = 0
+                    findActive = 0
+                    finder.clear()
+                    chromeVisible = true
+                },
             )
         }
 
@@ -660,6 +718,79 @@ private fun HighlightsSheet(
                 androidx.compose.material3.HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FindBar(
+    query: String,
+    matches: Int,
+    active: Int,
+    onQueryChange: (String) -> Unit,
+    onNext: () -> Unit,
+    onPrev: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    androidx.compose.material3.Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding(),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+        tonalElevation = 3.dp,
+        shadowElevation = 4.dp,
+    ) {
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close find")
+            }
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),
+                placeholder = { Text("Find in article") },
+                singleLine = true,
+                trailingIcon = {
+                    val label = if (query.isBlank()) {
+                        null
+                    } else if (matches == 0) {
+                        "0/0"
+                    } else {
+                        "${active + 1}/$matches"
+                    }
+                    if (label != null) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
+                    }
+                },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { onNext() },
+                ),
+            )
+            IconButton(onClick = onPrev, enabled = matches > 0) {
+                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Previous match")
+            }
+            IconButton(onClick = onNext, enabled = matches > 0) {
+                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Next match")
             }
         }
     }

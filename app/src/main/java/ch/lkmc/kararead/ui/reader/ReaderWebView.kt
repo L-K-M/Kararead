@@ -49,6 +49,36 @@ class ReaderPager {
     }
 }
 
+/**
+ * Drives the WebView's native in-page text search ("find in article") from the
+ * host, mirroring [ReaderPager]: the host calls [find]/[next]/[previous]/[clear]
+ * without holding the view, and match counts arrive back through [onResult].
+ */
+class ReaderFinder {
+    internal var findAll: ((String) -> Unit)? = null
+    internal var findNextMatch: ((Boolean) -> Unit)? = null
+    internal var clearMatches: (() -> Unit)? = null
+
+    /** Match counts from the WebView: (active match ordinal, total matches). */
+    var onResult: ((activeOrdinal: Int, count: Int) -> Unit)? = null
+
+    fun find(query: String) {
+        findAll?.invoke(query)
+    }
+
+    fun next() {
+        findNextMatch?.invoke(true)
+    }
+
+    fun previous() {
+        findNextMatch?.invoke(false)
+    }
+
+    fun clear() {
+        clearMatches?.invoke()
+    }
+}
+
 /** A WebView that adds a "Highlight" item to the text-selection action menu. */
 private class HighlightWebView(context: Context) : WebView(context) {
     var onHighlightRequested: (() -> Unit)? = null
@@ -163,6 +193,7 @@ fun ReaderWebView(
     onHighlightTap: (id: String) -> Unit,
     highlightsJson: String,
     pager: ReaderPager,
+    finder: ReaderFinder,
     pageBottomCoverPx: Int = 0,
     modifier: Modifier = Modifier,
 ) {
@@ -257,6 +288,18 @@ fun ReaderWebView(
                     evaluateJavascript("window.krSmoothToFraction && window.krSmoothToFraction($f);", null)
                 }
 
+                // Native in-page search. findAllAsync highlights every match and
+                // selects the first; findNext walks between them. Results (active
+                // ordinal + total) come back on the find listener.
+                setFindListener { activeMatchOrdinal, numberOfMatches, isDoneCounting ->
+                    if (isDoneCounting) finder.onResult?.invoke(activeMatchOrdinal, numberOfMatches)
+                }
+                finder.findAll = { query ->
+                    if (query.isBlank()) clearMatches() else findAllAsync(query)
+                }
+                finder.findNextMatch = { forward -> findNext(forward) }
+                finder.clearMatches = { clearMatches() }
+
                 webViewClient = object : WebViewClient() {
                     override fun shouldInterceptRequest(
                         view: WebView,
@@ -317,6 +360,9 @@ fun ReaderWebView(
         onRelease = {
             pager.pageBy = null
             pager.scrollToFraction = null
+            finder.findAll = null
+            finder.findNextMatch = null
+            finder.clearMatches = null
             it.destroy()
         },
     )
