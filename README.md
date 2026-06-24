@@ -19,7 +19,7 @@
    <img src="./screenshots/reader.jpeg" alt="Kararead reader view" width="200">
 </a>
 
-**Latest release:** v<!-- version -->0.2.0<!-- /version --> · [Download](https://github.com/L-K-M/Kararead/releases/latest)
+**Latest release:** v<!-- version -->0.3.0<!-- /version --> · [Download](https://github.com/L-K-M/Kararead/releases/latest)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
