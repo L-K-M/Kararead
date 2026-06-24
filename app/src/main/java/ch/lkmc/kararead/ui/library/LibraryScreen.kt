@@ -29,9 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -52,6 +49,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import ch.lkmc.kararead.data.model.QueueSort
 import ch.lkmc.kararead.ui.components.BookmarkList
+import ch.lkmc.kararead.ui.components.MessageStackHost
+import ch.lkmc.kararead.ui.components.MessageStackState
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 
@@ -68,30 +67,26 @@ fun LibraryScreen(
     val recents by viewModel.recents.collectAsStateWithLifecycle()
     val offlineBookmarks by viewModel.offlineBookmarks.collectAsStateWithLifecycle()
     val items = viewModel.bookmarks.collectAsLazyPagingItems()
-    val snackbarHost = remember { SnackbarHostState() }
+    val messageStack = remember { MessageStackState() }
     var sortMenuOpen by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.eventFlow.collect { event ->
             when (event) {
-                is LibraryEvent.Archived -> {
-                    val result = snackbarHost.showSnackbar(
-                        message = "Archived",
-                        actionLabel = "Undo",
-                        withDismissAction = true,
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        viewModel.undoArchive(event.bookmark)
-                    }
-                }
-                is LibraryEvent.Message -> snackbarHost.showSnackbar(event.text)
+                is LibraryEvent.Archived -> messageStack.show(
+                    text = "Archived",
+                    actionLabel = "Undo",
+                    durationMillis = MessageStackState.ACTION_MILLIS,
+                    onAction = { viewModel.undoArchive(event.bookmark) },
+                )
+                is LibraryEvent.Message -> messageStack.show(event.text)
                 is LibraryEvent.Open -> onOpenReader(event.bookmarkId)
             }
         }
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHost) },
+        snackbarHost = { MessageStackHost(messageStack) },
         topBar = {
             TopAppBar(
                 title = { Text(titleFor(ui)) },
