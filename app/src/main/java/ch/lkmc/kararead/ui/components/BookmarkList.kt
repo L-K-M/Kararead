@@ -76,6 +76,25 @@ fun BookmarkList(
     val pullState = rememberPullToRefreshState()
     val haptics = LocalHapticFeedback.current
 
+    // Long-pressing a row opens an action sheet for that article (a discoverable
+    // alternative to the swipe gestures, and the only way to reach these actions
+    // where swipe is disabled, e.g. search).
+    var actionsFor by remember { mutableStateOf<Bookmark?>(null) }
+    val onLongPress: (Bookmark) -> Unit = { bookmark ->
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        actionsFor = bookmark
+    }
+    actionsFor?.let { bookmark ->
+        ArticleActionsSheet(
+            bookmark = bookmark,
+            onDismiss = { actionsFor = null },
+            onOpen = onOpen,
+            onArchive = onArchive,
+            onFavourite = onFavourite,
+            archiveIsRestore = archiveIsRestore,
+        )
+    }
+
     // Haptic detent the instant the pull passes the refresh threshold, so you
     // can feel that releasing will refresh — before letting go. Re-arms if you
     // ease back under the threshold and past it again.
@@ -132,6 +151,7 @@ fun BookmarkList(
                         onArchive = onArchive,
                         onFavourite = onFavourite,
                         archiveIsRestore = archiveIsRestore,
+                        onLongPress = onLongPress,
                     )
                 } else {
                     val e = (items.loadState.refresh as LoadState.Error).error
@@ -178,6 +198,7 @@ fun BookmarkList(
                                         offline = isCached(bookmark.id),
                                         readingTimeOverride = readingTimeFor(bookmark.id),
                                         onClick = { onOpen(bookmark.id) },
+                                        onLongClick = { onLongPress(bookmark) },
                                     )
                                 }
                             } else {
@@ -187,6 +208,7 @@ fun BookmarkList(
                                     offline = isCached(bookmark.id),
                                     readingTimeOverride = readingTimeFor(bookmark.id),
                                     onClick = { onOpen(bookmark.id) },
+                                    onLongClick = { onLongPress(bookmark) },
                                 )
                             }
                             HorizontalDivider(
@@ -241,6 +263,7 @@ private fun OfflineFallbackList(
     onArchive: ((Bookmark) -> Unit)?,
     onFavourite: ((Bookmark) -> Unit)?,
     archiveIsRestore: Boolean,
+    onLongPress: (Bookmark) -> Unit,
 ) {
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         item { OfflineBanner(onRetry = onRetry) }

@@ -1,7 +1,7 @@
 package ch.lkmc.kararead.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,12 +47,13 @@ fun BookmarkCard(
     offline: Boolean = false,
     readingTimeOverride: Int? = null,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val isRead = progress >= 0.98f || bookmark.archived
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 20.dp, vertical = 18.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
