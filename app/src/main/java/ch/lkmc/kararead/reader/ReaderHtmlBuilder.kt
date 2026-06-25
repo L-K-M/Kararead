@@ -388,11 +388,27 @@ body {
   }
   // Page up/down by one screenful, less a line of overlap — and less whatever the
   // "next article" badge is covering, so paging never lands text behind it.
+  function krEaseOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
   window.krPageBy = function(dir){
     krStopSticky();
     var doc = document.scrollingElement || document.documentElement;
     var page = Math.max(40, doc.clientHeight - krLineHeightPx() - krBottomCoverPx());
-    window.scrollBy({ top: page * dir, left: 0, behavior: 'smooth' });
+    var startY = window.pageYOffset || doc.scrollTop || 0;
+    var maxY = Math.max(0, doc.scrollHeight - doc.clientHeight);
+    var targetY = Math.min(maxY, Math.max(0, startY + page * dir));
+    var dist = targetY - startY;
+    if (dist === 0) return;
+    // A custom rAF scroll instead of CSS 'smooth', whose duration isn't tunable
+    // and runs slower than feels right for page turns.
+    var duration = 160;
+    var start = null;
+    function step(ts){
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / duration);
+      window.scrollTo(0, startY + dist * krEaseOutCubic(t));
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
   };
   // A tap on a highlight asks the host about it. (Chrome toggling is handled
   // natively via a gesture detector, which is more reliable than a JS click.)

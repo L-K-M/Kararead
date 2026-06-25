@@ -130,10 +130,12 @@ private fun MessageCard(
 
     AnimatedVisibility(
         visibleState = transitionState,
+        modifier = Modifier.fillMaxWidth(),
         enter = fadeIn() + slideInVertically { it / 2 },
         exit = fadeOut() + slideOutVertically { it / 2 },
     ) {
         Snackbar(
+            modifier = Modifier.fillMaxWidth(),
             action = message.actionLabel?.let { label ->
                 {
                     TextButton(
