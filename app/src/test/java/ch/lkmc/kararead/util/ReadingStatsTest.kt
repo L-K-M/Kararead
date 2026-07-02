@@ -38,9 +38,75 @@ class ReadingStatsTest {
     }
 
     @Test
-    fun `streak breaks after two missing days`() {
+    fun `two consecutive quiet days break the streak`() {
+        // Read today, then a two-day silence: one day is forgiven, the second
+        // (within the same week) ends the streak — so the earlier run doesn't
+        // stay attached to today.
+        val stats = computeReadingStats(
+            mapOf(day(0) to plenty, day(3) to plenty, day(4) to plenty),
+            today,
+        )
+        assertEquals(1, stats.currentStreakDays)  // just today
+        assertEquals(2, stats.longestStreakDays)  // the day3–day4 run
+    }
+
+    @Test
+    fun `a single quiet day inside the run is forgiven`() {
+        // Read today, skipped yesterday, read the two days before that.
+        val stats = computeReadingStats(
+            mapOf(day(0) to plenty, day(2) to plenty, day(3) to plenty),
+            today,
+        )
+        assertEquals(3, stats.currentStreakDays)
+    }
+
+    @Test
+    fun `a quiet yesterday is forgiven even when today is still blank`() {
+        // Nothing read today (the day isn't over), yesterday was the quiet day,
+        // and the two days before it count — the streak stays alive.
         val stats = computeReadingStats(mapOf(day(2) to plenty, day(3) to plenty), today)
-        assertEquals(0, stats.currentStreakDays)
+        assertEquals(2, stats.currentStreakDays)
+    }
+
+    @Test
+    fun `only one quiet day is forgiven per week`() {
+        // Two gaps three days apart: the first is forgiven, the second (still
+        // within the week) breaks the streak despite later reading days.
+        val stats = computeReadingStats(
+            mapOf(
+                day(0) to plenty, day(2) to plenty, day(4) to plenty, day(5) to plenty,
+            ),
+            today,
+        )
+        assertEquals(2, stats.currentStreakDays) // today + day2, then the day3 gap stops it
+    }
+
+    @Test
+    fun `a bridged quiet day is flagged, an unbroken run is not`() {
+        val forgiven = computeReadingStats(
+            mapOf(day(0) to plenty, day(2) to plenty, day(3) to plenty), today,
+        )
+        assertEquals(true, forgiven.streakForgivenRecently)
+
+        // A clean run ending today never leaned on forgiveness.
+        val clean = computeReadingStats(
+            mapOf(day(0) to plenty, day(1) to plenty, day(2) to plenty), today,
+        )
+        assertEquals(false, clean.streakForgivenRecently)
+    }
+
+    @Test
+    fun `quiet days more than a week apart are each forgiven`() {
+        val data = buildMap {
+            put(day(0), plenty)
+            // day1 is a quiet day (forgiven)
+            for (d in 2L..7L) put(day(d), plenty)
+            // day8 is a second quiet day, a full week after the first (forgiven)
+            put(day(9), plenty)
+            put(day(10), plenty)
+        }
+        val stats = computeReadingStats(data, today)
+        assertEquals(9, stats.currentStreakDays) // 9 reading days, 2 forgiven
     }
 
     @Test
