@@ -2,7 +2,8 @@ package ch.lkmc.kararead.ui.reader
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -37,6 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -177,6 +181,7 @@ private fun ThemeSwatch(theme: ReaderTheme, selected: Boolean, onClick: () -> Un
         .getOrDefault(Color.White)
     val fg = runCatching { Color(android.graphics.Color.parseColor(palette.text)) }
         .getOrDefault(Color.Black)
+    val label = themeLabel(theme)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         androidx.compose.foundation.layout.Box(
             Modifier
@@ -189,7 +194,15 @@ private fun ThemeSwatch(theme: ReaderTheme, selected: Boolean, onClick: () -> Un
                     else MaterialTheme.colorScheme.outlineVariant,
                     shape = CircleShape,
                 )
-                .clickable(onClick = onClick),
+                // selectable + a name: TalkBack used to hear "Aa" four times
+                // in a row, and the selected swatch announced nothing at all
+                // (its only content was a null-description icon).
+                .selectable(
+                    selected = selected,
+                    role = Role.RadioButton,
+                    onClick = onClick,
+                )
+                .semantics { contentDescription = label },
             contentAlignment = Alignment.Center,
         ) {
             if (selected) {
@@ -223,13 +236,18 @@ private fun SliderRow(
 
 @Composable
 private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    // The whole row toggles and carries merged semantics — TalkBack used to
+    // land on a nameless "switch, on", and tapping the (much larger) label
+    // did nothing. Same pattern as Settings' own ToggleSetting.
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
