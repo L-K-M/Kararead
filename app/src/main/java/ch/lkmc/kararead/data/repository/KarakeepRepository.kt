@@ -34,6 +34,9 @@ import ch.lkmc.kararead.work.PendingOpSync
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.util.computeReadingStats
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -302,6 +305,38 @@ class KarakeepRepository @Inject constructor(
     // --- Lists / Tags / Highlights ---
 
     suspend fun getLists(): List<KarakeepList> = api().getLists().lists.map { it.toDomain() }
+
+    /**
+     * Manual lists only — smart lists are query-defined, so their membership
+     * can't be edited by hand and they don't belong in an "Add to list" picker.
+     */
+    suspend fun getManualLists(): List<KarakeepList> =
+        getLists().filter { it.type == "manual" }
+
+    /**
+     * Best-effort: which of [listIds] currently contain [bookmarkId]. Karakeep
+     * offers no reverse lookup, so we scan each list's first page. A false
+     * negative (the article sits deeper than one page) only leads to an
+     * idempotent re-add — never a wrong removal — so this stays safe.
+     */
+    suspend fun listsContaining(bookmarkId: String, listIds: List<String>): Set<String> =
+        coroutineScope {
+            listIds.map { listId ->
+                async {
+                    val present = runCatching {
+                        api().getListBookmarks(listId, limit = 100)
+                            .bookmarks.any { it.id == bookmarkId }
+                    }.getOrDefault(false)
+                    listId to present
+                }
+            }.awaitAll().filter { it.second }.map { it.first }.toSet()
+        }
+
+    suspend fun addBookmarkToList(bookmarkId: String, listId: String) =
+        withContext(NonCancellable) { api().addBookmarkToList(listId, bookmarkId) }
+
+    suspend fun removeBookmarkFromList(bookmarkId: String, listId: String) =
+        withContext(NonCancellable) { api().removeBookmarkFromList(listId, bookmarkId) }
 
     suspend fun getTags(): List<Tag> =
         api().getTags().tags.map { it.toDomain() }.sortedByDescending { it.count }

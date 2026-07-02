@@ -10,6 +10,9 @@ import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.remote.KarakeepApi
 import ch.lkmc.kararead.data.remote.dto.BookmarkDto
 import ch.lkmc.kararead.data.remote.dto.ContentDto
+import ch.lkmc.kararead.data.remote.dto.ListDto
+import ch.lkmc.kararead.data.remote.dto.ListsResponseDto
+import ch.lkmc.kararead.data.remote.dto.PaginatedBookmarksDto
 import ch.lkmc.kararead.data.remote.dto.UpdateBookmarkRequest
 import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.work.PendingOpSync
@@ -231,5 +234,53 @@ class KarakeepRepositoryTest {
 
         // Caching the empty body would poison the cache-first path forever.
         coVerify(exactly = 0) { cacheDao.upsert(any()) }
+    }
+
+    // --- Lists (H7) ---
+
+    @Test
+    fun `getManualLists drops smart lists`() = runTest {
+        coEvery { api.getLists() } returns ListsResponseDto(
+            listOf(
+                ListDto(id = "m1", name = "Recipes", type = "manual"),
+                ListDto(id = "s1", name = "Unread longreads", type = "smart"),
+                ListDto(id = "m2", name = "To buy", type = "manual"),
+            ),
+        )
+
+        val manual = repo.getManualLists()
+
+        assert(manual.map { it.id } == listOf("m1", "m2"))
+    }
+
+    @Test
+    fun `listsContaining reports only lists that hold the bookmark`() = runTest {
+        coEvery { api.getListBookmarks("l1", any(), any(), any(), any()) } returns
+            PaginatedBookmarksDto(listOf(BookmarkDto(id = "abc"), BookmarkDto(id = "other")))
+        coEvery { api.getListBookmarks("l2", any(), any(), any(), any()) } returns
+            PaginatedBookmarksDto(listOf(BookmarkDto(id = "other")))
+
+        val containing = repo.listsContaining("abc", listOf("l1", "l2"))
+
+        assert(containing == setOf("l1"))
+    }
+
+    @Test
+    fun `a failed membership scan is treated as not-a-member`() = runTest {
+        coEvery { api.getListBookmarks("l1", any(), any(), any(), any()) } throws
+            RuntimeException("offline")
+
+        // A scan error must not surface as "in the list" — that would drive a
+        // wrong removal on the next toggle.
+        assert(repo.listsContaining("abc", listOf("l1")).isEmpty())
+    }
+
+    @Test
+    fun `add and remove call the API with list and bookmark ids in order`() = runTest {
+        repo.addBookmarkToList("abc", "l1")
+        repo.removeBookmarkFromList("abc", "l1")
+
+        coVerify { api.addBookmarkToList("l1", "abc") }
+        coVerify { api.removeBookmarkFromList("l1", "abc") }
     }
 }

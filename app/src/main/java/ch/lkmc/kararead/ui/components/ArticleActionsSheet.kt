@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.IosShare
@@ -49,6 +50,7 @@ fun ArticleActionsSheet(
     onOpen: (String) -> Unit,
     onArchive: ((Bookmark) -> Unit)?,
     onFavourite: ((Bookmark) -> Unit)?,
+    onAddToList: (() -> Unit)? = null,
 ) {
     // Label from the item's own state — screens with mixed read/unread rows
     // (search) can't provide one screen-level answer.
@@ -98,6 +100,11 @@ fun ArticleActionsSheet(
                     if (archiveIsRestore) Icons.Filled.Unarchive else Icons.Filled.Archive,
                     if (archiveIsRestore) "Move to inbox" else "Archive",
                 ) { onDismiss(); onArchive(bookmark) }
+            }
+            if (onAddToList != null) {
+                ActionRow(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to list…") {
+                    onDismiss(); onAddToList()
+                }
             }
             val url = bookmark.url
             if (!url.isNullOrBlank()) {
