@@ -93,8 +93,13 @@ fun LibraryScreen(
                 actions = {
                     if (items.itemCount > 0) {
                         IconButton(onClick = {
-                            val index = (0 until items.itemCount).random()
-                            items[index]?.let { onOpenReader(it.id) }
+                            // Re-read the count at click time: the guard above is
+                            // composition-time, and a refresh can empty the list
+                            // between frames (random() on an empty range throws).
+                            val count = items.itemCount
+                            if (count > 0) {
+                                items[(0 until count).random()]?.let { onOpenReader(it.id) }
+                            }
                         }) {
                             Icon(Icons.Filled.Shuffle, contentDescription = "Surprise me")
                         }
