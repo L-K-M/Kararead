@@ -96,6 +96,43 @@ class ApiProviderConfigureTest {
     }
 }
 
+class AuthHeaderScopeTest {
+
+    private fun provider() = ApiProvider().apply {
+        configure(
+            ch.lkmc.kararead.data.model.ConnectionSettings(
+                serverUrl = "https://main.example.com",
+                apiKey = "ak1_secret",
+            ),
+        )
+    }
+
+    @Test
+    fun `attaches the key to the configured origin`() {
+        assertEquals(
+            "Bearer ak1_secret",
+            provider().authHeaderForUrl("https://main.example.com/api/v1/assets/1"),
+        )
+    }
+
+    @Test
+    fun `never attaches the key to cleartext http on the same host`() {
+        // Article HTML is attacker-supplied; an http:// image on the server's
+        // host used to receive the bearer token over cleartext.
+        assertEquals(null, provider().authHeaderForUrl("http://main.example.com/x.png"))
+    }
+
+    @Test
+    fun `never attaches the key to a different port on the same host`() {
+        assertEquals(null, provider().authHeaderForUrl("https://main.example.com:8443/x.png"))
+    }
+
+    @Test
+    fun `never attaches the key to third-party hosts`() {
+        assertEquals(null, provider().authHeaderForUrl("https://evil.example.net/x.png"))
+    }
+}
+
 class FailoverInterceptorTest {
 
     private val primary = "https://main.example.com/api/v1/".toHttpUrl()
@@ -146,6 +183,31 @@ class FailoverInterceptorTest {
             },
         )
         assertEquals("intranet.local", firstHost)
+    }
+
+    @Test
+    fun `does not replay a POST against the fallback`() {
+        val interceptor = FailoverInterceptor(primary, fallback) {}
+        val attempts = mutableListOf<String>()
+        val post = Request.Builder()
+            .url("https://main.example.com/api/v1/bookmarks")
+            .post(okhttp3.RequestBody.create(null, "{}"))
+            .build()
+        var threw = false
+        try {
+            interceptor.intercept(
+                FakeChain(post) { req ->
+                    attempts += req.url.host
+                    throw IOException("response lost")
+                },
+            )
+        } catch (e: IOException) {
+            threw = true
+        }
+        // A create may have succeeded server-side even though the response was
+        // lost; replaying it would duplicate the bookmark.
+        assertTrue(threw)
+        assertEquals(listOf("main.example.com"), attempts)
     }
 
     @Test
