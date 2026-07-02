@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import ch.lkmc.kararead.data.model.ReaderFont
 import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.data.model.ReaderTheme
+import ch.lkmc.kararead.data.model.resolve
 import ch.lkmc.kararead.reader.ReaderHtmlBuilder
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -169,7 +170,9 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun ThemeSwatch(theme: ReaderTheme, selected: Boolean, onClick: () -> Unit) {
-    val palette = ReaderHtmlBuilder.paletteFor(theme)
+    // The Auto swatch previews whatever it would resolve to right now.
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val palette = ReaderHtmlBuilder.paletteFor(theme.resolve(systemDark))
     val bg = runCatching { Color(android.graphics.Color.parseColor(palette.background)) }
         .getOrDefault(Color.White)
     val fg = runCatching { Color(android.graphics.Color.parseColor(palette.text)) }
@@ -231,6 +234,7 @@ private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
 }
 
 private fun themeLabel(theme: ReaderTheme) = when (theme) {
+    ReaderTheme.AUTO -> "Auto"
     ReaderTheme.LIGHT -> "Light"
     ReaderTheme.SEPIA -> "Sepia"
     ReaderTheme.DARK -> "Dark"
@@ -283,7 +287,8 @@ private fun rememberReaderFontFamilies(): Map<ReaderFont, FontFamily> {
 
 @Composable
 private fun PreviewCard(prefs: ReaderPreferences, fontFamilies: Map<ReaderFont, FontFamily>) {
-    val palette = ReaderHtmlBuilder.paletteFor(prefs.theme)
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val palette = ReaderHtmlBuilder.paletteFor(prefs.theme.resolve(systemDark))
     fun parse(hex: String, fallback: Color) =
         runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(fallback)
     val bg = parse(palette.background, Color.White)

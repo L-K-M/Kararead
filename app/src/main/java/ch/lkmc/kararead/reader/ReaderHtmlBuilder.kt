@@ -25,6 +25,10 @@ data class ReaderPalette(
 object ReaderHtmlBuilder {
 
     fun paletteFor(theme: ReaderTheme): ReaderPalette = when (theme) {
+        // AUTO is resolved against the system setting before rendering
+        // (ReaderTheme.resolve); falling back to LIGHT keeps an unresolved
+        // value harmless.
+        ReaderTheme.AUTO,
         ReaderTheme.LIGHT -> ReaderPalette(
             background = "#fdfdfb", surface = "#f3f3ee", text = "#1b1b1b",
             secondary = "#6b6b6b", link = "#1565c0", border = "#e3e3dd",

@@ -6,6 +6,7 @@ import ch.lkmc.kararead.data.model.ReaderArticle
 import ch.lkmc.kararead.data.model.ReaderFont
 import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.data.model.ReaderTheme
+import ch.lkmc.kararead.data.model.resolve
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -167,9 +168,27 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
-    fun `each theme has a distinct background`() {
-        val backgrounds = ReaderTheme.entries.map { ReaderHtmlBuilder.paletteFor(it).background }
-        assertTrue(backgrounds.toSet().size == ReaderTheme.entries.size)
+    fun `each concrete theme has a distinct background`() {
+        // AUTO is an alias resolved to a concrete theme before rendering.
+        val concrete = ReaderTheme.entries.filter { it != ReaderTheme.AUTO }
+        val backgrounds = concrete.map { ReaderHtmlBuilder.paletteFor(it).background }
+        assertTrue(backgrounds.toSet().size == concrete.size)
+    }
+
+    @Test
+    fun `auto resolves with the system setting`() {
+        org.junit.Assert.assertEquals(
+            ReaderTheme.DARK,
+            with(ch.lkmc.kararead.data.model.ReaderTheme.AUTO) { resolve(systemDark = true) },
+        )
+        org.junit.Assert.assertEquals(
+            ReaderTheme.LIGHT,
+            with(ch.lkmc.kararead.data.model.ReaderTheme.AUTO) { resolve(systemDark = false) },
+        )
+        org.junit.Assert.assertEquals(
+            ReaderTheme.SEPIA,
+            with(ch.lkmc.kararead.data.model.ReaderTheme.SEPIA) { resolve(systemDark = true) },
+        )
     }
 
     @Test
