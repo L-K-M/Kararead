@@ -49,8 +49,10 @@ fun ArticleActionsSheet(
     onOpen: (String) -> Unit,
     onArchive: ((Bookmark) -> Unit)?,
     onFavourite: ((Bookmark) -> Unit)?,
-    archiveIsRestore: Boolean,
 ) {
+    // Label from the item's own state — screens with mixed read/unread rows
+    // (search) can't provide one screen-level answer.
+    val archiveIsRestore = bookmark.archived
     val context = LocalContext.current
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(

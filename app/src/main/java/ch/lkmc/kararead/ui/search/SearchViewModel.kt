@@ -98,6 +98,19 @@ class SearchViewModel @Inject constructor(
         _query.value = value
     }
 
+    /** Toggle read/unread from search results (state-aware per item). */
+    fun toggleArchived(bookmark: Bookmark) {
+        viewModelScope.launch {
+            runCatching { repository.setArchived(bookmark.id, !bookmark.archived) }
+        }
+    }
+
+    fun toggleFavourite(bookmark: Bookmark) {
+        viewModelScope.launch {
+            runCatching { repository.setFavourited(bookmark.id, !bookmark.favourited) }
+        }
+    }
+
     private companion object {
         const val MAX_TAG_CHIPS = 50
     }

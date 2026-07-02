@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -49,10 +50,14 @@ fun SearchScreen(
     val tags by viewModel.tags.collectAsStateWithLifecycle()
     val results = viewModel.results.collectAsLazyPagingItems()
 
+    val context = androidx.compose.ui.platform.LocalContext.current
     Column(
         Modifier
             .fillMaxSize()
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            // Edge-to-edge + adjustResize doesn't resize for the keyboard by
+            // itself; without this the bottom results hid behind the IME.
+            .imePadding(),
     ) {
         OutlinedTextField(
             value = query,
@@ -147,7 +152,26 @@ fun SearchScreen(
                 progressFor = { progress[it] ?: 0f },
                 readingTimeFor = { readingTimes[it] },
                 onOpen = onOpenReader,
+                // Swipe stays off (relevance-ordered rows), but the long-press
+                // sheet — whose own docs name search as its reason to exist —
+                // now actually offers archive/favourite here.
                 enableSwipe = false,
+                onArchive = { bookmark ->
+                    viewModel.toggleArchived(bookmark)
+                    android.widget.Toast.makeText(
+                        context,
+                        if (bookmark.archived) "Moved to inbox" else "Archived",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                },
+                onFavourite = { bookmark ->
+                    viewModel.toggleFavourite(bookmark)
+                    android.widget.Toast.makeText(
+                        context,
+                        if (bookmark.favourited) "Removed favourite" else "Favourited",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                },
                 emptyTitle = "No results",
                 emptySubtitle = "Try a different search.",
                 emptyEmoji = "🤔",
