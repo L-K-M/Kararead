@@ -60,7 +60,11 @@ object ReaderHtmlBuilder {
         val safelist = Safelist.relaxed()
             .addTags("figure", "figcaption", "h1", "h2", "section", "article", "mark", "hr")
             .addAttributes("img", "src", "alt", "title", "width", "height")
-            .addAttributes("a", "href", "title")
+            .addAttributes("a", "href", "title", "name")
+            // Keep element ids: footnote/anchor links look their targets up by
+            // id, and stripping them made every in-page link kick the reader
+            // out to a browser at the server root.
+            .addAttributes(":all", "id")
             .addProtocols("img", "src", "http", "https", "data")
         // Pass the server origin as the base URI so Karakeep's *relative* asset
         // paths (e.g. /api/assets/<id>) resolve to absolute https URLs and
@@ -92,7 +96,7 @@ object ReaderHtmlBuilder {
 
         return """
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
@@ -431,6 +435,10 @@ body {
   // Page up/down by one screenful, less a line of overlap — and less whatever the
   // "next article" badge is covering, so paging never lands text behind it.
   function krEaseOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+  // Generation counter: a new page turn invalidates any still-running one, so
+  // rapid taps (or a held volume key) don't run overlapping animations that
+  // write scrollTo toward different targets on interleaved frames.
+  var krPageAnim = 0;
   window.krPageBy = function(dir){
     krStopSticky();
     var doc = document.scrollingElement || document.documentElement;
@@ -444,7 +452,9 @@ body {
     // and runs slower than feels right for page turns.
     var duration = 160;
     var start = null;
+    var myAnim = ++krPageAnim;
     function step(ts){
+      if (myAnim !== krPageAnim) return; // superseded by a newer page turn
       if (start === null) start = ts;
       var t = Math.min(1, (ts - start) / duration);
       window.scrollTo(0, startY + dist * krEaseOutCubic(t));
@@ -480,10 +490,13 @@ body {
         if (raw.charAt(0) === '#') hash = raw;
         else if (n.hash && n.pathname === location.pathname && n.search === location.search) hash = n.hash;
         if (hash.length > 1) {
+          // Same-document fragment: always consume it. Falling through for a
+          // missing target used to resolve "#fn1" against the server-origin
+          // base URL and launch an external browser at the Karakeep root.
+          e.preventDefault();
           var id; try { id = decodeURIComponent(hash.substring(1)); } catch(err){ id = hash.substring(1); }
           var target = document.getElementById(id) || document.getElementsByName(id)[0];
           if (target && target.scrollIntoView) {
-            e.preventDefault();
             krStopSticky();
             target.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
