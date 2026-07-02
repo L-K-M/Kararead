@@ -86,6 +86,41 @@ fun BookmarkCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+
+            // Tags were fetched all along but never surfaced. A few muted
+            // chips aid triage without shouting; the +N keeps heavy taggers'
+            // cards from turning into tag salad.
+            if (bookmark.tags.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    bookmark.tags.take(MAX_TAG_CHIPS).forEach { tag ->
+                        Text(
+                            text = "#$tag",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .weight(1f, fill = false),
+                        )
+                    }
+                    if (bookmark.tags.size > MAX_TAG_CHIPS) {
+                        Text(
+                            text = "+${bookmark.tags.size - MAX_TAG_CHIPS}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
 
         if (!bookmark.imageUrl.isNullOrBlank()) {
@@ -102,6 +137,9 @@ fun BookmarkCard(
         }
     }
 }
+
+/** How many tag chips a card shows before collapsing the rest into "+N". */
+private const val MAX_TAG_CHIPS = 3
 
 /**
  * The one muted line under the title: `favicon  source · reading-status`, with a
