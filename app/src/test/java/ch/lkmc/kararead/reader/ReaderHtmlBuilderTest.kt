@@ -145,4 +145,54 @@ class ReaderHtmlBuilderTest {
         val backgrounds = ReaderTheme.entries.map { ReaderHtmlBuilder.paletteFor(it).background }
         assertTrue(backgrounds.toSet().size == ReaderTheme.entries.size)
     }
+
+    @Test
+    fun `font size css uses a decimal point regardless of the default locale`() {
+        val previous = java.util.Locale.getDefault()
+        java.util.Locale.setDefault(java.util.Locale.GERMANY)
+        try {
+            val css = ReaderHtmlBuilder.variableCss(
+                ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT),
+                ReaderPreferences(fontScale = 1.2f),
+            )
+            // 19 * 1.2 = 22.8 — a German default locale used to emit "22,8px",
+            // which is invalid CSS and silently broke the text-size preference.
+            assertTrue(css.contains("--kr-font-size: 22.8px"))
+            assertFalse(css.contains("22,8"))
+
+            val js = ReaderHtmlBuilder.applyPrefsScript(
+                ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT),
+                ReaderPreferences(fontScale = 1.2f),
+            )
+            assertTrue(js.contains("'22.8px'"))
+        } finally {
+            java.util.Locale.setDefault(previous)
+        }
+    }
+
+    @Test
+    fun `font size honors the system font scale`() {
+        val css = ReaderHtmlBuilder.variableCss(
+            ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT),
+            ReaderPreferences(fontScale = 1.0f),
+            systemFontScale = 1.5f,
+        )
+        // 19 * 1.0 * 1.5 = 28.5
+        assertTrue(css.contains("--kr-font-size: 28.5px"))
+    }
+
+    @Test
+    fun `highlight color is theme-aware and avoids color-mix`() {
+        // Dark themes need a dimmer highlight than light ones, and the value
+        // must be plain rgba() so pre-Chromium-111 WebViews still render it.
+        val light = ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT).highlight
+        val dark = ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK).highlight
+        assertTrue(light.startsWith("rgba("))
+        assertTrue(dark.startsWith("rgba("))
+        assertTrue(light != dark)
+
+        val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
+        assertTrue(out.contains("--kr-hl:"))
+        assertTrue(out.contains("background: var(--kr-hl"))
+    }
 }
