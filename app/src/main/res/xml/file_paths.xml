@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Rendered quote cards live under the app cache and are shared via FileProvider. -->
+    <cache-path
+        name="quote_cards"
+        path="quote_cards/" />
+</paths>
