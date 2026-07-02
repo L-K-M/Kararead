@@ -216,8 +216,12 @@ fun ReaderScreen(
         chromeVisible = true
     }
 
-    androidx.compose.runtime.LaunchedEffect(prefs.keepScreenOn) {
+    // keepScreenOn is set on the activity-wide compose view, so it must be
+    // cleared on the way out — otherwise one reading session with the pref on
+    // keeps the whole app awake forever.
+    androidx.compose.runtime.DisposableEffect(prefs.keepScreenOn) {
         view.keepScreenOn = prefs.keepScreenOn
+        onDispose { view.keepScreenOn = false }
     }
 
     // Tally foreground reading time (powers the reading streak), only while the
@@ -246,13 +250,23 @@ fun ReaderScreen(
     // Claim the hardware volume keys for page turning while this screen is shown.
     val volumeController = remember(context) { context.findVolumeKeyController() }
     androidx.compose.runtime.DisposableEffect(volumeController, prefs.volumeKeyPaging) {
-        if (volumeController != null && prefs.volumeKeyPaging) {
-            volumeController.setVolumeKeyHandler { up ->
-                pager.page(if (up) -1 else 1)
-                true
+        val handler: ((Boolean) -> Boolean)? =
+            if (volumeController != null && prefs.volumeKeyPaging) {
+                { up ->
+                    pager.page(if (up) -1 else 1)
+                    true
+                }
+            } else {
+                null
             }
+        handler?.let { volumeController?.setVolumeKeyHandler(it) }
+        onDispose {
+            // Release only our own registration. During reader→reader
+            // auto-advance both screens are briefly composed, and the OLD
+            // screen's dispose runs after the NEW one registered — a blind
+            // null here silently killed volume paging until re-entry.
+            handler?.let { volumeController?.clearVolumeKeyHandler(it) }
         }
-        onDispose { volumeController?.setVolumeKeyHandler(null) }
     }
 
     // The "Done · Next" badge shows near the end and covers the bottom-right text.
@@ -292,8 +306,12 @@ fun ReaderScreen(
                     article = state.article!!,
                     prefs = prefs,
                     baseUrl = viewModel.serverOrigin,
-                    initialProgress = state.initialProgress,
-                    initialAnchor = state.initialAnchor,
+                    // The live restore point, not the open-time snapshot: a
+                    // rebuilt WebView (rotation, recreation) lands where the
+                    // reader actually is. Read from the ViewModel (plain vars,
+                    // not per-frame state) so this doesn't recompose on scroll.
+                    initialProgress = viewModel.restoreProgress,
+                    initialAnchor = viewModel.restoreAnchor,
                     assetLoader = viewModel.assetLoader,
                     onProgress = viewModel::onProgress,
                     onScrollDirection = { up ->

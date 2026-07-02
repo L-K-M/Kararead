@@ -127,6 +127,20 @@ class ReaderViewModel @Inject constructor(
     private var pendingFraction = 0f
     private var pendingAnchor: String? = null
 
+    // The live restore point for a (re)created WebView. Kept as plain vars (not
+    // in the per-frame ReaderUiState, which would undo the progress-flow
+    // optimization) and read only when the WebView is built — which is exactly
+    // what rotation / activity recreation triggers. Null until the first report,
+    // so a fresh open restores to the persisted position instead.
+    private var reportedFraction: Float? = null
+    private var reportedAnchor: String? = null
+
+    /** Fraction a (re)created WebView should restore to: live, else persisted. */
+    val restoreProgress: Float get() = reportedFraction ?: _state.value.initialProgress
+
+    /** Block anchor a (re)created WebView should restore to: live, else persisted. */
+    val restoreAnchor: String? get() = reportedAnchor ?: _state.value.initialAnchor
+
     // True once the user has toggled read/favourite in this session, so a late
     // live-state refresh never clobbers their optimistic change.
     private var userChangedReadState = false
@@ -146,6 +160,10 @@ class ReaderViewModel @Inject constructor(
 
     fun load(forceRefresh: Boolean = false) {
         userChangedReadState = false
+        // New (or reloaded) article: forget the previous live restore point so
+        // the WebView restores to the persisted position, not a stale one.
+        reportedFraction = null
+        reportedAnchor = null
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             val initial = repository.getProgressOnce(bookmarkId)
@@ -187,6 +205,10 @@ class ReaderViewModel @Inject constructor(
     /** Called frequently from the WebView scroll bridge; persists with debounce. */
     fun onProgress(fraction: Float, anchor: String) {
         _progress.value = fraction
+        // Track the live restore point (last non-empty anchor wins), for a
+        // WebView rebuilt on rotation.
+        reportedFraction = fraction
+        reportedAnchor = anchor.takeIf { it.isNotEmpty() } ?: reportedAnchor
         pendingFraction = fraction
         pendingAnchor = anchor.takeIf { it.isNotEmpty() }
         if (kotlin.math.abs(fraction - lastSaved) < 0.01f) return

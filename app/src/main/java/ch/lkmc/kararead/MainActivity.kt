@@ -77,6 +77,9 @@ class RootViewModel @Inject constructor(
  */
 interface VolumeKeyController {
     fun setVolumeKeyHandler(handler: ((up: Boolean) -> Boolean)?)
+
+    /** Clear the handler only if [handler] is still the registered one. */
+    fun clearVolumeKeyHandler(handler: (up: Boolean) -> Boolean)
 }
 
 @AndroidEntryPoint
@@ -88,6 +91,10 @@ class MainActivity : ComponentActivity(), VolumeKeyController {
 
     override fun setVolumeKeyHandler(handler: ((up: Boolean) -> Boolean)?) {
         volumeKeyHandler = handler
+    }
+
+    override fun clearVolumeKeyHandler(handler: (up: Boolean) -> Boolean) {
+        if (volumeKeyHandler === handler) volumeKeyHandler = null
     }
 
     private fun isVolumeKey(keyCode: Int) =
