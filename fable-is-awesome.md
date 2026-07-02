@@ -470,7 +470,7 @@ not because the app is bad.
   Night reading with a light app theme: a bright cream top bar, FAB, and listen
   bar slide in over a pure-black page (`ReaderScreen.kt:445`). Deriving the
   reader's chrome surfaces from the active `ReaderPalette` would make the whole
-  screen one calm object. **Status: ⬜** (worth doing as its own carefully-reviewed design PR)
+  screen one calm object. **Status: 🟢 PR #61 (`fable/reader-chrome-palette`)**
 
 - **F7 🎨 Reader-controls rows are broken for TalkBack** (minor, verified)
   Theme swatches announce "Aa" four times (the selected one announces *nothing* —
@@ -535,14 +535,16 @@ not because the app is bad.
   `configure()` happens before the probe with no revert
   (`KarakeepRepository.kt:286`). Harmless today (onboarding only runs signed
   out), but a landmine for the edit-connection feature (H1). Fix alongside H1.
-  **Status: ⬜**
+  **Status: 🟢 PR #60 (`fable/edit-connection`)** — the edit flow restores the
+  live client to the saved connection on a failed test.
 
 ## H. Missing features (the reader you'd expect)
 
 - **H1 ✨ Edit the connection without signing out** (the top gap, verified pain)
   Rotating an API key or moving a server currently requires sign-out, which now
   also (correctly) wipes local state. A "Connection" editor reusing the
-  onboarding form — plus G4's fix — is the answer. **Status: ⬜**
+  onboarding form — plus G4's fix — is the answer.
+  **Status: 🟢 PR #60 (`fable/edit-connection`)**
 
 - **H2 ✨ Tag chips on cards** (upgrade of deferred B3)
   `Bookmark.tags` is already populated; one muted `#tag` run in the metadata line
@@ -559,11 +561,11 @@ not because the app is bad.
 - **H5 ✨ Jump from the Highlights screen to the highlight** (high value, cheap)
   Rows already know the bookmark; marks already carry `data-id` — a nav argument
   plus `scrollIntoView` lands the user on their own quote instead of the saved
-  scroll position. **Status: ⬜**
+  scroll position. **Status: 🟢 PR #63 (`fable/jump-to-highlight`)**
 
 - **H6 ✨ Table of contents for long articles** (deferred D3) — heading blocks are
   already enumerated by the anchor machinery; a sheet listing h2/h3s with
-  `scrollIntoView` is most of it. **Status: ⬜**
+  `scrollIntoView` is most of it. **Status: 🟢 PR #64 (`fable/reader-toc`)**
 
 - **H7 ✨ Add/remove an article to/from lists in-app** — the API calls exist and
   are used by ShareActivity; the reader overflow and long-press sheet are the
@@ -594,6 +596,7 @@ not because the app is bad.
 
 - **I3 💡 A GitHub-style reading heatmap** in Stats — `reading_day` has everything;
   12 weeks of little squares is the single most habit-forming stats visual.
+  **Status: 🟢 PR #62 (`fable/stats-heatmap`)**
 
 - **I4 💡 End-of-article flourish** — you already tally active reading seconds;
   "Read in 14 min · usually takes 18" under the — end — marker is a tiny,
