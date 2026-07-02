@@ -1,5 +1,7 @@
 package ch.lkmc.kararead.ui.settings
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.lkmc.kararead.data.model.AppThemeMode
@@ -9,16 +11,20 @@ import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.repository.ConnectionResult
 import ch.lkmc.kararead.data.repository.KarakeepRepository
+import ch.lkmc.kararead.util.LocalBackupCodec
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.work.OfflineSync
 import ch.lkmc.kararead.work.PendingOpSync
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -50,6 +56,7 @@ class SettingsViewModel @Inject constructor(
     private val apiProvider: ApiProvider,
     private val offlineSync: OfflineSync,
     private val pendingOpSync: PendingOpSync,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     private val base = combine(
@@ -102,6 +109,50 @@ class SettingsViewModel @Inject constructor(
 
     /** Manually kick a replay of the offline outbox. */
     fun retrySync() = repository.retryPendingOps()
+
+    /**
+     * Write a JSON backup of the local-only data (reading progress + stats) to
+     * the SAF document [uri] the user just created. Reports a human summary via
+     * [onResult] on completion.
+     */
+    fun backUp(uri: Uri, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val message = withContext(Dispatchers.IO) {
+                runCatching {
+                    val backup = repository.exportLocalData()
+                    val json = LocalBackupCodec.encode(backup)
+                    appContext.contentResolver.openOutputStream(uri, "wt")?.use {
+                        it.write(json.toByteArray(Charsets.UTF_8))
+                    } ?: error("couldn't open the file")
+                    "Backed up ${backup.progress.size} reading positions and " +
+                        "${backup.readingDays.size} days of stats"
+                }.getOrElse { "Backup failed — ${it.message ?: "couldn't write the file"}" }
+            }
+            onResult(message)
+        }
+    }
+
+    /**
+     * Restore a JSON backup from the SAF document [uri]. Merges non-destructively
+     * (see [KarakeepRepository.importLocalData]) and reports how much landed.
+     */
+    fun restore(uri: Uri, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val message = withContext(Dispatchers.IO) {
+                runCatching {
+                    val text = appContext.contentResolver.openInputStream(uri)?.use {
+                        it.readBytes().decodeToString()
+                    } ?: error("couldn't open the file")
+                    val backup = LocalBackupCodec.decode(text)
+                        ?: error("that doesn't look like a Kararead backup")
+                    val summary = repository.importLocalData(backup)
+                    "Restored ${summary.progress} reading positions and " +
+                        "${summary.days} days of stats"
+                }.getOrElse { "Restore failed — ${it.message ?: "couldn't read the file"}" }
+            }
+            onResult(message)
+        }
+    }
 
     /**
      * Test and (on success) persist an edited server connection without signing
