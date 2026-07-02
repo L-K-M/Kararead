@@ -90,6 +90,7 @@ fun BookmarkList(
     // alternative to the swipe gestures, and the only way to reach these actions
     // where swipe is disabled, e.g. search).
     var actionsFor by remember { mutableStateOf<Bookmark?>(null) }
+    var addToListFor by remember { mutableStateOf<Bookmark?>(null) }
     val onLongPress: (Bookmark) -> Unit = { bookmark ->
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         actionsFor = bookmark
@@ -101,7 +102,11 @@ fun BookmarkList(
             onOpen = onOpen,
             onArchive = onArchive,
             onFavourite = onFavourite,
+            onAddToList = { addToListFor = bookmark },
         )
+    }
+    addToListFor?.let { bookmark ->
+        AddToListSheet(bookmark = bookmark, onDismiss = { addToListFor = null })
     }
 
     // Haptic detent the instant the pull passes the refresh threshold, so you
