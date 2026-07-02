@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark parent + dark window background: with only a Light platform theme,
+         every activity recreation (rotation, process restore, returning from a
+         share sheet) flashed a white frame before Compose drew the dark UI. -->
+    <style name="Theme.Kararead" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

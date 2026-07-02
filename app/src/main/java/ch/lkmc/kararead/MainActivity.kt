@@ -123,6 +123,30 @@ class MainActivity : ComponentActivity(), VolumeKeyController {
             } else {
                 ch.lkmc.kararead.ui.theme.DefaultAccent.toArgb()
             }
+            // enableEdgeToEdge derives icon contrast from the SYSTEM night
+            // mode; with the in-app theme override (App theme = Dark on a
+            // light-mode device) that left dark status-bar icons on dark
+            // surfaces for the whole session. Re-apply on the resolved theme.
+            val dark = when (state.themeMode) {
+                AppThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+                AppThemeMode.LIGHT -> false
+                AppThemeMode.DARK -> true
+            }
+            androidx.compose.runtime.LaunchedEffect(dark) {
+                val transparent = android.graphics.Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = if (dark) {
+                        androidx.activity.SystemBarStyle.dark(transparent)
+                    } else {
+                        androidx.activity.SystemBarStyle.light(transparent, transparent)
+                    },
+                    navigationBarStyle = if (dark) {
+                        androidx.activity.SystemBarStyle.dark(transparent)
+                    } else {
+                        androidx.activity.SystemBarStyle.light(transparent, transparent)
+                    },
+                )
+            }
             KararreadTheme(
                 themeMode = state.themeMode,
                 dynamicColor = state.dynamicColor,
