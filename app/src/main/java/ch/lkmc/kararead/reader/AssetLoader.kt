@@ -114,14 +114,20 @@ class AssetLoader @Inject constructor(
         return WebResourceResponse(mime, null, body.byteStream())
     }
 
-    /** Make every response cacheable so offline reading isn't at the origin's mercy. */
+    /** Make every successful response cacheable so offline reading isn't at the origin's mercy. */
     private class ForceCacheInterceptor : okhttp3.Interceptor {
-        override fun intercept(chain: okhttp3.Interceptor.Chain): Response =
-            chain.proceed(chain.request()).newBuilder()
+        override fun intercept(chain: okhttp3.Interceptor.Chain): Response {
+            val response = chain.proceed(chain.request())
+            // Only successful bodies: force-caching a transient 404 (asset not
+            // crawled yet, CDN hiccup) served the error for a year and left the
+            // article's images permanently broken.
+            if (!response.isSuccessful) return response
+            return response.newBuilder()
                 .removeHeader("Pragma")
                 .removeHeader("Cache-Control")
                 .header("Cache-Control", "public, max-age=31536000")
                 .build()
+        }
     }
 
     companion object {

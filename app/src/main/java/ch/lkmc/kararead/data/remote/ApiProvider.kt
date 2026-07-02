@@ -1,5 +1,6 @@
 package ch.lkmc.kararead.data.remote
 
+import ch.lkmc.kararead.BuildConfig
 import ch.lkmc.kararead.data.model.ConnectionSettings
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl
@@ -41,8 +42,12 @@ class ApiProvider @Inject constructor() {
         val client: OkHttpClient,
         val primaryBaseUrl: String,
         val fallbackBaseUrl: String?,
-        /** Lowercased hosts (primary + fallback) the bearer token may be sent to. */
-        val hosts: Set<String>,
+        /**
+         * The exact (scheme, host, port) origins the bearer token may be sent
+         * to. Host-only matching let attacker-controlled article content pull
+         * the key onto cleartext http or a different port of the same machine.
+         */
+        val origins: Set<Triple<String, String, Int>>,
     )
 
     // ContentDto's custom serializer (see Dtos.kt) decodes an unrecognized
@@ -75,10 +80,6 @@ class ApiProvider @Inject constructor() {
 
         activeBaseApiUrl = primaryBaseUrl
 
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BASIC
-            redactHeader("Authorization")
-        }
         val builder = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(settings.apiKey))
         if (fallbackHttp != null && primaryHttp != null) {
@@ -86,8 +87,17 @@ class ApiProvider @Inject constructor() {
                 FailoverInterceptor(primaryHttp, fallbackHttp) { activeBaseApiUrl = it },
             )
         }
+        // Request logging is a debug aid; in release it wrote every URL
+        // (including search queries) to logcat on user devices.
+        if (BuildConfig.DEBUG) {
+            builder.addInterceptor(
+                HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BASIC
+                    redactHeader("Authorization")
+                },
+            )
+        }
         val client = builder
-            .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .build()
@@ -99,7 +109,10 @@ class ApiProvider @Inject constructor() {
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
 
-        val hosts = setOfNotNull(primaryHttp?.host?.lowercase(), fallbackHttp?.host?.lowercase())
+        val origins = setOfNotNull(
+            primaryHttp?.let { Triple(it.scheme, it.host.lowercase(), it.port) },
+            fallbackHttp?.let { Triple(it.scheme, it.host.lowercase(), it.port) },
+        )
 
         state = State(
             settings = settings,
@@ -107,7 +120,7 @@ class ApiProvider @Inject constructor() {
             client = client,
             primaryBaseUrl = primaryBaseUrl,
             fallbackBaseUrl = fallbackBaseUrl,
-            hosts = hosts,
+            origins = origins,
         )
     }
 
@@ -134,11 +147,15 @@ class ApiProvider @Inject constructor() {
             }.getOrNull()
         }
 
-    /** Bearer header for a URL, but only if it targets a configured server host. */
+    /**
+     * Bearer header for a URL, but only if it targets a configured server's
+     * exact origin (scheme + host + port). Article HTML is attacker-supplied;
+     * a same-host http:// or odd-port image must not receive the API key.
+     */
     fun authHeaderForUrl(url: String): String? {
-        val hosts = state?.hosts ?: return null
-        val requestHost = runCatching { java.net.URI(url).host }.getOrNull()?.lowercase() ?: return null
-        return if (requestHost in hosts) authHeader() else null
+        val origins = state?.origins ?: return null
+        val u = url.toHttpUrlOrNull() ?: return null
+        return if (Triple(u.scheme, u.host.lowercase(), u.port) in origins) authHeader() else null
     }
 
     companion object {
@@ -193,6 +210,11 @@ class FailoverInterceptor(
         return try {
             chain.proceed(route(request, first))
         } catch (e: IOException) {
+            // POST is not idempotent: an IOException doesn't mean the server
+            // didn't act (a lost response after a successful create), and with
+            // primary+fallback often pointing at the same box via two routes,
+            // replaying it duplicated saves/highlights. Let the caller decide.
+            if (request.method.equals("POST", ignoreCase = true)) throw e
             // The active server is unreachable — flip to the other one and retry.
             useFallback = !useFallback
             onActiveBaseChanged(baseApiUrl(second))
