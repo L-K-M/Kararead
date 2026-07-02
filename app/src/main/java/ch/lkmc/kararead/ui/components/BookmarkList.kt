@@ -1,5 +1,8 @@
 package ch.lkmc.kararead.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -49,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import ch.lkmc.kararead.data.model.Bookmark
+import ch.lkmc.kararead.util.ReadingProverbs
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -129,6 +134,19 @@ fun BookmarkList(
                 .first { it != null && it != topIdBeforeRefresh }
         }
         if (landed != null) listState.animateScrollToItem(0)
+    }
+
+    // Once in a while, a pull is rewarded with a small reading proverb under the
+    // spinner. Picked when the refresh starts and left to linger a moment after
+    // it finishes, so even a snappy refresh gives you time to read it.
+    var proverb by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(refreshing) {
+        if (refreshing) {
+            if (proverb == null) proverb = ReadingProverbs.pickOccasional()
+        } else if (proverb != null) {
+            kotlinx.coroutines.delay(1400L)
+            proverb = null
+        }
     }
 
     PullToRefreshBox(
@@ -247,6 +265,44 @@ fun BookmarkList(
                     }
                 }
             }
+        }
+
+        ReadingProverbBanner(
+            proverb = proverb,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 64.dp, start = 24.dp, end = 24.dp),
+        )
+    }
+}
+
+/**
+ * A gentle, fading proverb pill shown beneath the pull-to-refresh spinner.
+ * Renders nothing (and reserves no space) while [proverb] is null.
+ */
+@Composable
+private fun ReadingProverbBanner(proverb: String?, modifier: Modifier = Modifier) {
+    // Keep the last non-null line around so it stays legible during the fade-out.
+    var shown by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(proverb) { if (proverb != null) shown = proverb }
+    AnimatedVisibility(
+        visible = proverb != null,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier,
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+            tonalElevation = 3.dp,
+        ) {
+            Text(
+                text = shown.orEmpty(),
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
