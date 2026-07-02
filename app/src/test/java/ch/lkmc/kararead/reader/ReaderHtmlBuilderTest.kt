@@ -208,8 +208,10 @@ class ReaderHtmlBuilderTest {
 
     @Test
     fun `each concrete theme has a distinct background`() {
-        // AUTO is an alias resolved to a concrete theme before rendering.
-        val concrete = ReaderTheme.entries.filter { it != ReaderTheme.AUTO }
+        // AUTO and SUNSET are aliases resolved to a concrete theme before
+        // rendering, so paletteFor maps them onto an existing palette.
+        val aliases = setOf(ReaderTheme.AUTO, ReaderTheme.SUNSET)
+        val concrete = ReaderTheme.entries.filter { it !in aliases }
         val backgrounds = concrete.map { ReaderHtmlBuilder.paletteFor(it).background }
         assertTrue(backgrounds.toSet().size == concrete.size)
     }
@@ -228,6 +230,26 @@ class ReaderHtmlBuilderTest {
             ReaderTheme.SEPIA,
             with(ch.lkmc.kararead.data.model.ReaderTheme.SEPIA) { resolve(systemDark = true) },
         )
+    }
+
+    @Test
+    fun `sunset follows the clock from light through sepia to dark`() {
+        val sunset = ReaderTheme.SUNSET
+        // Daytime reads as plain light paper.
+        assertEquals(ReaderTheme.LIGHT, sunset.resolve(systemDark = false, hourOfDay = 9))
+        assertEquals(ReaderTheme.LIGHT, sunset.resolve(systemDark = false, hourOfDay = 16))
+        // Golden hour warms to sepia.
+        assertEquals(ReaderTheme.SEPIA, sunset.resolve(systemDark = false, hourOfDay = 18))
+        // After nightfall it goes dark, regardless of the system setting.
+        assertEquals(ReaderTheme.DARK, sunset.resolve(systemDark = false, hourOfDay = 22))
+        assertEquals(ReaderTheme.DARK, sunset.resolve(systemDark = false, hourOfDay = 3))
+    }
+
+    @Test
+    fun `sunset defaults to daytime for hour-agnostic callers`() {
+        // The noon default keeps callers that never pass an hour on the light
+        // branch (paletteFor also treats SUNSET as a light fallback).
+        assertEquals(ReaderTheme.LIGHT, ReaderTheme.SUNSET.resolve(systemDark = true))
     }
 
     @Test

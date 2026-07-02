@@ -104,11 +104,30 @@ enum class ReaderTheme {
     /** Follow the system light/dark setting (LIGHT by day, DARK by night). */
     AUTO,
     LIGHT, SEPIA, DARK, BLACK,
+
+    /**
+     * Follow the sun: LIGHT through the day, warm SEPIA at dusk, DARK after
+     * nightfall. A gentle, automatic wind-down that leans on the same warm
+     * paper the user already knows from [SEPIA].
+     */
+    SUNSET,
 }
 
-/** The concrete theme to render: [ReaderTheme.AUTO] follows the system. */
-fun ReaderTheme.resolve(systemDark: Boolean): ReaderTheme = when (this) {
+/**
+ * The concrete theme to render. [ReaderTheme.AUTO] follows the system's
+ * light/dark setting; [ReaderTheme.SUNSET] follows the local clock, easing
+ * from bright paper through warm sepia to dark as the day winds down.
+ *
+ * [hourOfDay] is the local hour (0..23); the noon default keeps existing
+ * callers and tests on the daytime branch until they pass the real time.
+ */
+fun ReaderTheme.resolve(systemDark: Boolean, hourOfDay: Int = 12): ReaderTheme = when (this) {
     ReaderTheme.AUTO -> if (systemDark) ReaderTheme.DARK else ReaderTheme.LIGHT
+    ReaderTheme.SUNSET -> when (hourOfDay) {
+        in 6..16 -> ReaderTheme.LIGHT   // daytime
+        in 17..19 -> ReaderTheme.SEPIA  // golden hour
+        else -> ReaderTheme.DARK        // night
+    }
     else -> this
 }
 

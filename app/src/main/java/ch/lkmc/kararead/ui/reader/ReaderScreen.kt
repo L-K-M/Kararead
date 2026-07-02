@@ -86,6 +86,10 @@ import ch.lkmc.kararead.ui.components.MessageState
 /** Granularity of the reading-time tally, in seconds. */
 private const val READING_TICK_SECONDS = 15L
 
+/** The local hour of day (0..23), used to drive the SUNSET reader theme. */
+private fun currentHourOfDay(): Int =
+    java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReaderScreen(
@@ -100,8 +104,20 @@ fun ReaderScreen(
     // AUTO resolves to a concrete theme here (and re-resolves live if the
     // system flips while reading); everything below renders the resolved one.
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val prefs = remember(rawPrefs, systemDark) {
-        rawPrefs.copy(theme = rawPrefs.theme.resolve(systemDark))
+    // SUNSET follows the local clock — light by day, sepia at dusk, dark after
+    // nightfall. Tick the hour every ten minutes so the theme eases forward on
+    // its own while a long read stays open (a no-op for every other theme).
+    var hourOfDay by remember { mutableStateOf(currentHourOfDay()) }
+    if (rawPrefs.theme == ch.lkmc.kararead.data.model.ReaderTheme.SUNSET) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            while (true) {
+                hourOfDay = currentHourOfDay()
+                kotlinx.coroutines.delay(10 * 60 * 1000L)
+            }
+        }
+    }
+    val prefs = remember(rawPrefs, systemDark, hourOfDay) {
+        rawPrefs.copy(theme = rawPrefs.theme.resolve(systemDark, hourOfDay))
     }
     // The reader's overlaid chrome (bars, FAB, progress line) is tinted from the
     // active reader palette rather than the app theme, so a light app theme +
