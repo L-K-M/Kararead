@@ -158,6 +158,9 @@ interface PendingOpDao {
     @Query("UPDATE pending_op SET attempts = :attempts WHERE id = :id")
     suspend fun setAttempts(id: Long, attempts: Int)
 
+    @Query("SELECT COUNT(*) FROM pending_op")
+    fun observeCount(): kotlinx.coroutines.flow.Flow<Int>
+
     @Query("DELETE FROM pending_op")
     suspend fun clear()
 }

@@ -100,6 +100,14 @@ fun SettingsScreen(
                 title = "Read-later list",
                 subtitle = state.readLaterName ?: "Pick one in the Lists tab",
             )
+            if (state.pendingSyncCount > 0) {
+                SettingRow(
+                    title = "Waiting to sync",
+                    subtitle = pendingSyncSubtitle(state.pendingSyncCount),
+                    onClick = viewModel::retrySync,
+                    actionLabel = "Retry",
+                )
+            }
 
             HorizontalDivider()
             SectionHeader("Appearance")
@@ -443,5 +451,10 @@ private fun offlineStatusSubtitle(state: SettingsUiState): String {
         else -> "$count articles ready offline"
     }
     return if (state.offline.enabled) "$ready · keeping up to ${state.offline.keepCount}" else ready
+}
+
+private fun pendingSyncSubtitle(count: Int): String = when (count) {
+    1 -> "1 offline change will sync when you're back online"
+    else -> "$count offline changes will sync when you're back online"
 }
 

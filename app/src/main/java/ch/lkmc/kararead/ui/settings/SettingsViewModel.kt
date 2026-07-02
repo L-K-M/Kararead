@@ -33,6 +33,8 @@ data class SettingsUiState(
     val stats: ReadingStats = ReadingStats(),
     /** SAF tree URI (string) of the highlights export folder, or null if unset. */
     val highlightsFolder: String? = null,
+    /** Offline archive/favourite changes still waiting to reach the server. */
+    val pendingSyncCount: Int = 0,
 )
 
 /** Outcome of an in-place connection edit, surfaced to the edit dialog. */
@@ -67,21 +69,39 @@ class SettingsViewModel @Inject constructor(
         )
     }
 
+    private data class Extra(
+        val cachedCount: Int,
+        val stats: ReadingStats,
+        val accent: Int,
+        val folder: String?,
+        val pendingSync: Int,
+    )
+
+    // A second combine so the state can fold in six sources (the typed combine
+    // overload tops out at five).
+    private val extra = combine(
+        repository.cachedIds().map { it.size },
+        repository.readingStats(),
+        settings.accentColor,
+        settings.highlightsFolderUri,
+        repository.pendingOpCount(),
+    ) { cachedCount, stats, accent, folder, pending ->
+        Extra(cachedCount, stats, accent, folder, pending)
+    }
+
     val state: StateFlow<SettingsUiState> =
-        combine(
-            base,
-            repository.cachedIds().map { it.size },
-            repository.readingStats(),
-            settings.accentColor,
-            settings.highlightsFolderUri,
-        ) { s, cachedCount, stats, accent, folder ->
+        combine(base, extra) { s, x ->
             s.copy(
-                cachedCount = cachedCount,
-                stats = stats,
-                accentColor = accent,
-                highlightsFolder = folder,
+                cachedCount = x.cachedCount,
+                stats = x.stats,
+                accentColor = x.accent,
+                highlightsFolder = x.folder,
+                pendingSyncCount = x.pendingSync,
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
+
+    /** Manually kick a replay of the offline outbox. */
+    fun retrySync() = repository.retryPendingOps()
 
     /**
      * Test and (on success) persist an edited server connection without signing
