@@ -37,10 +37,14 @@ class OfflineSync @Inject constructor(
         )
     }
 
-    /** Run a prefetch now (used by "Download now" and on enabling offline mode). */
-    fun runNow() {
+    /**
+     * Run a prefetch now (used by "Download now" and on enabling offline mode).
+     * Honors the user's wifi-only preference — WorkManager defers the run until
+     * a suitable network is available rather than downloading over mobile data.
+     */
+    fun runNow(wifiOnly: Boolean) {
         val request = OneTimeWorkRequestBuilder<OfflinePrefetchWorker>()
-            .setConstraints(constraints(wifiOnly = false))
+            .setConstraints(constraints(wifiOnly))
             .build()
         workManager.enqueueUniqueWork(
             OfflinePrefetchWorker.ONESHOT_NAME,

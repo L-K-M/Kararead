@@ -93,16 +93,25 @@ class SettingsViewModel @Inject constructor(
 
     private fun updateOffline(transform: (OfflinePreferences) -> OfflinePreferences) {
         viewModelScope.launch {
-            val updated = transform(settings.offlinePreferencesOnce())
+            val previous = settings.offlinePreferencesOnce()
+            val updated = transform(previous)
             settings.setOfflinePreferences(updated)
             // Scheduling is also driven by the app-level observer, but kick a
-            // download immediately when the user just enabled offline reading.
-            if (updated.enabled) offlineSync.runNow()
+            // download immediately when the user just ENABLED offline reading.
+            // Only on that transition — kicking on every pref change used to
+            // fire an unconstrained download the moment someone turned ON
+            // "Only on Wi-Fi" while on mobile data — and with the user's
+            // network constraint applied.
+            if (updated.enabled && !previous.enabled) offlineSync.runNow(updated.wifiOnly)
         }
     }
 
-    /** Manual "Download now". */
-    fun downloadOfflineNow() = offlineSync.runNow()
+    /** Manual "Download now" — still honors the wifi-only preference. */
+    fun downloadOfflineNow() {
+        viewModelScope.launch {
+            offlineSync.runNow(settings.offlinePreferencesOnce().wifiOnly)
+        }
+    }
 
     fun clearCache() {
         viewModelScope.launch { repository.clearCache() }
