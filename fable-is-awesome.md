@@ -368,8 +368,10 @@ not because the app is bad.
 - **D13 🐞 Highlights are online-only** (minor, verified)
   No local cache: offline, a downloaded article renders zero of your highlights
   and creating one just fails. A Room-backed highlight cache + outbox (mirroring
-  the archive outbox) is the real fix. **Status: ⬜** (larger; the outbox
-  pattern to copy now exists)
+  the archive outbox) is the real fix. **Status: 🟢 PR #72
+  (`fable/offline-highlights`)** — cached_highlight + highlight_op tables
+  (db v6), replayed by the existing sync worker; highlights render and edit
+  offline.
 
 - **D14 🐞 "Save/Share all highlights" silently truncates at 1000** (minor, verified)
   `getAllHighlights(max = 1000)` (`KarakeepRepository.kt:244`). At minimum, say
@@ -578,7 +580,8 @@ not because the app is bad.
 
 - **H9 ✨ Backup/restore of local-only data** — progress, streaks and stats are
   unrecoverable by design today (see B17); a JSON export/import in Settings is
-  cheap insurance. **Status: ⬜**
+  cheap insurance. **Status: 🟢 PR #71 (`fable/backup-restore`)** — SAF
+  JSON export/import that merges non-destructively.
 
 - **H10 ✨ Surface the outbox** — after B2/B3, a quiet "N changes waiting to sync"
   row in Settings (with retry) turns invisible best-effort into trust.
