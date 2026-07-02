@@ -51,6 +51,7 @@ class ArticleSpeaker @Inject constructor(
     private var ready = false
     private var pendingStart: (() -> Unit)? = null
 
+    @Volatile
     private var chunks: List<String> = emptyList()
 
     /** The voice the user prefers (engine voice name); applied once the engine is ready. */
@@ -131,13 +132,19 @@ class ArticleSpeaker @Inject constructor(
                 pendingStart?.invoke()
                 pendingStart = null
             } else {
+                // Init failed: drop the dead engine so a later "Listen" tap can
+                // retry with a fresh one — leaving it set made every retry a
+                // silent no-op (ensureEngine early-returns on tts != null).
+                tts = null
+                pendingStart = null
                 _state.update { it.copy(active = false, failed = true) }
             }
         }
     }
 
-    private fun requestAudioFocus() {
-        val am = audioManager ?: return
+    /** True when audio focus was granted (or there's no audio manager to ask). */
+    private fun requestAudioFocus(): Boolean {
+        val am = audioManager ?: return true
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -149,7 +156,7 @@ class ArticleSpeaker @Inject constructor(
             .setWillPauseWhenDucked(true)
             .build()
         focusRequest = request
-        am.requestAudioFocus(request)
+        return am.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
     private fun registerNoisy() {
@@ -225,6 +232,7 @@ class ArticleSpeaker @Inject constructor(
         override fun onStart(utteranceId: String?) {
             utteranceId?.toIntOrNull()?.let { i ->
                 _state.update { it.copy(index = i) }
+                maybeRefillQueue(i)
             }
         }
 
@@ -273,7 +281,13 @@ class ArticleSpeaker @Inject constructor(
     fun skipBy(delta: Int) {
         val s = _state.value
         if (!s.active) return
-        enqueueFrom((s.index + delta).coerceIn(0, chunks.lastIndex))
+        val target = (s.index + delta).coerceIn(0, chunks.lastIndex)
+        if (s.paused) {
+            // Just move the position; play/pause stays the user's call.
+            _state.update { it.copy(index = target) }
+        } else {
+            enqueueFrom(target)
+        }
     }
 
     fun stop() {
@@ -283,19 +297,47 @@ class ArticleSpeaker @Inject constructor(
         _state.value = SpeechState()
     }
 
+    // Last chunk index handed to the engine; the utterance listener tops the
+    // queue up as playback approaches it.
+    @Volatile
+    private var queuedUpTo = -1
+
     private fun enqueueFrom(start: Int) {
         val engine = tts ?: return
         // Claim audio focus (so other media ducks/pauses) and watch for the
-        // headset being pulled, then begin speaking.
+        // headset being pulled, then begin speaking. If focus is denied (e.g.
+        // during a phone call), don't talk over it.
         pausedByFocusLoss = false
-        requestAudioFocus()
+        if (!requestAudioFocus()) {
+            _state.update { it.copy(paused = it.active, failed = !it.active) }
+            return
+        }
         registerNoisy()
         engine.stop()
-        for (i in start..chunks.lastIndex) {
+        // Queue a bounded window instead of the whole remaining article: each
+        // speak() is a synchronous binder call, and long articles are thousands
+        // of chunks — flooding them from the main thread froze the UI on every
+        // start, skip and rate change.
+        val end = (start + QUEUE_WINDOW - 1).coerceAtMost(chunks.lastIndex)
+        for (i in start..end) {
             val mode = if (i == start) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
             engine.speak(chunks[i], mode, null, i.toString())
         }
+        queuedUpTo = end
         _state.value = SpeechState(active = true, paused = false, index = start, total = chunks.size)
+    }
+
+    /** Top the engine's queue up as playback nears its end (called per utterance). */
+    private fun maybeRefillQueue(current: Int) {
+        val engine = tts ?: return
+        val snapshot = chunks
+        if (queuedUpTo >= snapshot.lastIndex) return
+        if (queuedUpTo - current > QUEUE_REFILL_MARGIN) return
+        val end = (queuedUpTo + QUEUE_WINDOW).coerceAtMost(snapshot.lastIndex)
+        for (i in (queuedUpTo + 1)..end) {
+            engine.speak(snapshot[i], TextToSpeech.QUEUE_ADD, null, i.toString())
+        }
+        queuedUpTo = end
     }
 
     fun shutdown() {
@@ -308,15 +350,53 @@ class ArticleSpeaker @Inject constructor(
     }
 
     companion object {
+        /** How many utterances to hand the engine at once (see [maybeRefillQueue]). */
+        private const val QUEUE_WINDOW = 20
+
+        /** Refill once fewer than this many queued utterances remain. */
+        private const val QUEUE_REFILL_MARGIN = 8
+
+        /**
+         * Hard per-chunk length bound. Engines reject utterances longer than
+         * TextToSpeech.getMaxSpeechInputLength() (typically ~4000); staying far
+         * below it also keeps skip granularity useful for unpunctuated text.
+         */
+        const val MAX_CHUNK_CHARS = 800
+
         /** Split into sentence-ish chunks short enough to track and skip. */
         fun chunkText(text: String?): List<String> {
             val clean = text?.trim().orEmpty()
             if (clean.isEmpty()) return emptyList()
-            // Break on sentence terminators followed by whitespace, and on blank lines.
+            // Break on Latin sentence terminators followed by whitespace, on
+            // CJK terminators (。！？ need no trailing space), and on blank lines.
             return clean
-                .split(Regex("(?<=[.!?])\\s+|\\n{2,}"))
+                .split(Regex("(?<=[.!?])\\s+|(?<=[。！？…])|\\n{2,}"))
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
+                .flatMap { splitLongChunk(it) }
+        }
+
+        /**
+         * Hard-wrap a chunk that has no usable sentence boundaries (CJK without
+         * spaces, minified text, endless run-ons), preferring whitespace or
+         * clause punctuation near the limit so speech still breathes.
+         */
+        private fun splitLongChunk(chunk: String): List<String> {
+            if (chunk.length <= MAX_CHUNK_CHARS) return listOf(chunk)
+            val out = mutableListOf<String>()
+            var rest = chunk
+            while (rest.length > MAX_CHUNK_CHARS) {
+                val window = rest.substring(0, MAX_CHUNK_CHARS)
+                val cut = window
+                    .lastIndexOfAny(charArrayOf(' ', '\t', '\n', ',', ';', ':', '，', '、', '；', '：'))
+                    .takeIf { it > MAX_CHUNK_CHARS / 2 }
+                    ?.plus(1)
+                    ?: MAX_CHUNK_CHARS
+                out += rest.substring(0, cut).trim()
+                rest = rest.substring(cut).trim()
+            }
+            if (rest.isNotEmpty()) out += rest
+            return out.filter { it.isNotEmpty() }
         }
     }
 }

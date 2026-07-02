@@ -30,7 +30,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.IosShare
-import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -38,7 +38,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -242,10 +242,14 @@ fun ReaderScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Claim the hardware volume keys for page turning while this screen is shown.
+    // Claim the hardware volume keys for page turning while this screen is shown
+    // — except while narration is playing, when the keys must keep doing their
+    // day job (adjusting the TTS volume) instead of paging the article.
     val volumeController = remember(context) { context.findVolumeKeyController() }
-    androidx.compose.runtime.DisposableEffect(volumeController, prefs.volumeKeyPaging) {
-        if (volumeController != null && prefs.volumeKeyPaging) {
+    androidx.compose.runtime.DisposableEffect(
+        volumeController, prefs.volumeKeyPaging, speech.active,
+    ) {
+        if (volumeController != null && prefs.volumeKeyPaging && !speech.active) {
             volumeController.setVolumeKeyHandler { up ->
                 pager.page(if (up) -1 else 1)
                 true
@@ -821,7 +825,7 @@ private fun ListenBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onPrev) {
-                Icon(Icons.Filled.Replay10, contentDescription = "Previous sentence")
+                Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous sentence")
             }
             IconButton(onClick = onToggle) {
                 Icon(
@@ -830,7 +834,7 @@ private fun ListenBar(
                 )
             }
             IconButton(onClick = onNext) {
-                Icon(Icons.Filled.Forward10, contentDescription = "Next sentence")
+                Icon(Icons.Filled.SkipNext, contentDescription = "Next sentence")
             }
             Text(
                 text = "Listening · ${(speech.index + 1).coerceAtMost(speech.total)}/${speech.total}",
