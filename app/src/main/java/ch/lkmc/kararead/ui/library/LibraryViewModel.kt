@@ -184,7 +184,12 @@ class LibraryViewModel @Inject constructor(
     fun undoArchive(bookmark: Bookmark) {
         viewModelScope.launch {
             runCatching { repository.setArchived(bookmark.id, false) }
-                .onSuccess { hiddenIds.update { it - bookmark.id } }
+                .onSuccess {
+                    hiddenIds.update { it - bookmark.id }
+                    // Archiving evicted the downloaded copy; quietly restore it
+                    // so the article is still readable offline after an undo.
+                    runCatching { repository.getArticle(bookmark.id) }
+                }
         }
     }
 
