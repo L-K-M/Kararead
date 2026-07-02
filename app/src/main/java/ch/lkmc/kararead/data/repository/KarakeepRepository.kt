@@ -214,15 +214,21 @@ class KarakeepRepository @Inject constructor(
         return allCleared
     }
 
-    /** Save a new link to Karakeep, optionally adding it to a list. Returns the new id. */
-    suspend fun saveLink(url: String, listId: String? = null): String {
+    /** Outcome of [saveLink]: the created id, and whether the list-add worked. */
+    data class SaveLinkResult(val id: String, val addedToList: Boolean)
+
+    /** Save a new link to Karakeep, optionally adding it to a list. */
+    suspend fun saveLink(url: String, listId: String? = null): SaveLinkResult {
         val created = api().createBookmark(
             ch.lkmc.kararead.data.remote.dto.CreateBookmarkRequest(url = url),
         )
-        if (listId != null) {
-            runCatching { api().addBookmarkToList(listId, created.id) }
-        }
-        return created.id
+        // Don't fail the whole save if only the list-add breaks — but do
+        // report it: the user's home queue IS the read-later list, and a
+        // cheerful full-success toast used to hide that the article would
+        // never appear there.
+        val addedToList = listId == null ||
+            runCatching { api().addBookmarkToList(listId, created.id) }.isSuccess
+        return SaveLinkResult(created.id, addedToList)
     }
 
     suspend fun deleteBookmark(id: String) {
@@ -340,6 +346,19 @@ class KarakeepRepository @Inject constructor(
 
     suspend fun clearCache() {
         cacheDao.clear()
+    }
+
+    /**
+     * Wipe everything tied to the signed-in account: cached articles, the
+     * offline outbox, reading progress and stats. Leaving any of it behind
+     * replays stale ops against the next server and bleeds one account's
+     * reading history into another's.
+     */
+    suspend fun clearLocalState() {
+        runCatching { cacheDao.clear() }
+        runCatching { pendingOpDao.clear() }
+        runCatching { progressDao.clear() }
+        runCatching { statsDao.clear() }
     }
 
     suspend fun cachedCount(): Int = cacheDao.count()

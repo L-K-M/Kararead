@@ -43,4 +43,9 @@ class PendingOpSync @Inject constructor(
             request,
         )
     }
+
+    /** Cancel any scheduled flush (sign-out: the queue is being wiped). */
+    fun cancel() {
+        workManager.cancelUniqueWork(PendingOpWorker.UNIQUE_NAME)
+    }
 }
