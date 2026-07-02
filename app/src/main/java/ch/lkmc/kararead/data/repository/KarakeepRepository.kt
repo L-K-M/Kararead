@@ -344,6 +344,9 @@ class KarakeepRepository @Inject constructor(
 
     suspend fun cachedCount(): Int = cacheDao.count()
 
+    /** Whether an article is available from the local cache right now. */
+    suspend fun isCached(id: String): Boolean = cacheDao.get(id) != null
+
     /** Ids of articles currently available offline, for "downloaded" indicators. */
     fun cachedIds(): Flow<Set<String>> = cacheDao.observeIds().map { it.toSet() }
 

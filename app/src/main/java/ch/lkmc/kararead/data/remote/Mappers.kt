@@ -23,7 +23,16 @@ import ch.lkmc.kararead.util.parseIsoToMillis
  * supplied [assetUrl] resolver (backed by [ApiProvider]).
  */
 
-fun BookmarkDto.toDomain(assetUrl: (String) -> String?): Bookmark {
+fun BookmarkDto.toDomain(
+    assetUrl: (String) -> String?,
+    /**
+     * Plain text of the article body, when the caller already extracted it.
+     * Without it, mapping one bookmark used to run Jsoup over the full HTML
+     * up to three times (excerpt, reading time, reader text) on the main
+     * thread while the open-transition animation played.
+     */
+    plainTextOverride: String? = null,
+): Bookmark {
     val link = content as? ContentDto.Link
     val text = content as? ContentDto.Text
     val asset = content as? ContentDto.Asset
@@ -32,10 +41,12 @@ fun BookmarkDto.toDomain(assetUrl: (String) -> String?): Bookmark {
         ?: link?.imageUrl
     val resolvedFavicon = link?.favicon
 
+    val plain = plainTextOverride ?: htmlToPlainText(link?.htmlContent) ?: text?.text
+
     val url = link?.url ?: text?.sourceUrl ?: asset?.sourceUrl
     val derivedExcerpt = link?.description
         ?: summary
-        ?: excerptFrom(htmlToPlainText(link?.htmlContent) ?: text?.text)
+        ?: excerptFrom(plain)
 
     return Bookmark(
         id = id,
@@ -54,7 +65,7 @@ fun BookmarkDto.toDomain(assetUrl: (String) -> String?): Bookmark {
         tags = tags.map { it.name },
         note = note,
         summary = summary,
-        readingTimeMinutes = estimateReadingMinutes(htmlToPlainText(link?.htmlContent) ?: text?.text),
+        readingTimeMinutes = estimateReadingMinutes(plain),
         contentType = when (content) {
             is ContentDto.Link -> ContentType.LINK
             is ContentDto.Text -> ContentType.TEXT
@@ -70,7 +81,7 @@ fun BookmarkDto.toReaderArticle(assetUrl: (String) -> String?): ReaderArticle {
     val html = link?.htmlContent
     val plain = htmlToPlainText(html) ?: text?.text
     return ReaderArticle(
-        bookmark = toDomain(assetUrl),
+        bookmark = toDomain(assetUrl, plainTextOverride = plain),
         htmlContent = html ?: text?.text?.let { plainTextToHtml(it) },
         textContent = plain,
     )

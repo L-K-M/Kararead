@@ -183,6 +183,7 @@ fun ReaderWebView(
     article: ReaderArticle,
     prefs: ReaderPreferences,
     baseUrl: String?,
+    presanitizedBody: String? = null,
     initialProgress: Float,
     initialAnchor: String?,
     assetLoader: AssetLoader,
@@ -207,9 +208,13 @@ fun ReaderWebView(
     val statusBarTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
     val safeTopPx = with(density) { statusBarTopPx.toDp().value }.toInt() +
         READER_TOP_BAR_DP + READER_TOP_GAP_DP
-    // Build the document once per article; preference changes are applied via JS.
+    // Build the document once per article; preference changes are applied via
+    // JS. With the body sanitized ahead of time this is cheap string assembly.
     val html = remember(article.bookmark.id, baseUrl, safeTopPx) {
-        ReaderHtmlBuilder.build(article, prefs, baseUri = baseUrl, safeTopPx = safeTopPx)
+        ReaderHtmlBuilder.build(
+            article, prefs,
+            baseUri = baseUrl, safeTopPx = safeTopPx, presanitizedBody = presanitizedBody,
+        )
     }
 
     val bridge: ReaderBridge = remember {

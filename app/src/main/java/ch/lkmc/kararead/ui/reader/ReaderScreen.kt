@@ -282,6 +282,7 @@ fun ReaderScreen(
                     article = state.article!!,
                     prefs = prefs,
                     baseUrl = viewModel.serverOrigin,
+                    presanitizedBody = state.sanitizedBody,
                     initialProgress = state.initialProgress,
                     initialAnchor = state.initialAnchor,
                     assetLoader = viewModel.assetLoader,

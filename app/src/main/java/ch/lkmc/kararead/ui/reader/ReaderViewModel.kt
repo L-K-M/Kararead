@@ -48,6 +48,8 @@ data class ReaderUiState(
     val initialAnchor: String? = null,
     val progress: Float = 0f,
     val offline: Boolean = false,
+    /** Article body already sanitized off the UI thread, ready for the WebView. */
+    val sanitizedBody: String? = null,
 )
 
 @HiltViewModel
@@ -143,12 +145,21 @@ class ReaderViewModel @Inject constructor(
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             val initial = repository.getProgressOnce(bookmarkId)
+            val wasCached = repository.isCached(bookmarkId)
             runCatching { repository.getArticle(bookmarkId, forceRefresh) }
                 .onSuccess { article ->
+                    // Sanitize off the UI thread; doing it lazily inside
+                    // composition hitched the reader's open transition.
+                    val sanitizedBody = withContext(Dispatchers.Default) {
+                        ch.lkmc.kararead.reader.ReaderHtmlBuilder.sanitizeBody(
+                            article.htmlContent, apiProvider.serverOrigin,
+                        )
+                    }
                     _state.update {
                         it.copy(
                             loading = false,
                             article = article,
+                            sanitizedBody = sanitizedBody,
                             favourited = article.bookmark.favourited,
                             archived = article.bookmark.archived,
                             initialProgress = initial?.fraction ?: 0f,
@@ -156,18 +167,33 @@ class ReaderViewModel @Inject constructor(
                             progress = initial?.fraction ?: 0f,
                         )
                     }
-                    // The article may have come from the cache; reconcile the
-                    // read/favourite flags with the live server state when we can.
-                    repository.refreshReadState(bookmarkId)?.let { (archived, favourited) ->
-                        if (!userChangedReadState) {
-                            _state.update { it.copy(archived = archived, favourited = favourited) }
+                    // Only a cache-served article can carry stale flags; a live
+                    // fetch just delivered fresh ones, and the extra GET per
+                    // open delayed highlights behind a needless round trip.
+                    if (wasCached && !forceRefresh) {
+                        repository.refreshReadState(bookmarkId)?.let { (archived, favourited) ->
+                            if (!userChangedReadState) {
+                                _state.update { it.copy(archived = archived, favourited = favourited) }
+                            }
                         }
                     }
                     runCatching { repository.getHighlights(bookmarkId) }
                         .onSuccess { _highlights.value = it }
                     launch {
-                        _nextUp.value =
-                            runCatching { repository.nextInboxBookmark(bookmarkId) }.getOrNull()
+                        val next = runCatching { repository.nextInboxBookmark(bookmarkId) }.getOrNull()
+                        _nextUp.value = next
+                        // Quietly warm the next article (body + images) so
+                        // "Done · Next" opens instantly — and works offline.
+                        next?.let { n ->
+                            runCatching {
+                                val warmed = repository.getArticle(n.id)
+                                withContext(Dispatchers.IO) {
+                                    assetLoader.prefetchImages(
+                                        warmed.htmlContent, apiProvider.serverOrigin,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 .onFailure { e ->
