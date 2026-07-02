@@ -50,4 +50,9 @@ val AccentPresets: List<Color> = listOf(
     Color(0xFF4E5A6B), // Slate
 )
 
+/** Display/a11y names for [AccentPresets], index-aligned. */
+val AccentPresetNames: List<String> = listOf(
+    "Espresso", "Terracotta", "Forest", "Ocean", "Plum", "Crimson", "Teal", "Slate",
+)
+
 val DefaultAccent = AccentPresets.first()
