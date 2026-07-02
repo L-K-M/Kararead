@@ -48,6 +48,14 @@ data class ReaderUiState(
     val initialAnchor: String? = null,
     val progress: Float = 0f,
     val offline: Boolean = false,
+    /**
+     * Where a (re)created WebView should restore to. Starts at the persisted
+     * position but follows the live one — the ViewModel outlives the WebView
+     * across rotation/recreation, and restoring to the stale open-time point
+     * used to throw away everything read since.
+     */
+    val restoreProgress: Float = 0f,
+    val restoreAnchor: String? = null,
 )
 
 @HiltViewModel
@@ -154,6 +162,8 @@ class ReaderViewModel @Inject constructor(
                             initialProgress = initial?.fraction ?: 0f,
                             initialAnchor = initial?.anchor,
                             progress = initial?.fraction ?: 0f,
+                            restoreProgress = initial?.fraction ?: 0f,
+                            restoreAnchor = initial?.anchor,
                         )
                     }
                     // The article may have come from the cache; reconcile the
@@ -180,7 +190,13 @@ class ReaderViewModel @Inject constructor(
 
     /** Called frequently from the WebView scroll bridge; persists with debounce. */
     fun onProgress(fraction: Float, anchor: String) {
-        _state.update { it.copy(progress = fraction) }
+        _state.update {
+            it.copy(
+                progress = fraction,
+                restoreProgress = fraction,
+                restoreAnchor = anchor.takeIf(String::isNotEmpty) ?: it.restoreAnchor,
+            )
+        }
         pendingFraction = fraction
         pendingAnchor = anchor.takeIf { it.isNotEmpty() }
         if (kotlin.math.abs(fraction - lastSaved) < 0.01f) return

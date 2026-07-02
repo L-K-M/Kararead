@@ -312,12 +312,16 @@ body {
   var ticking = false;
   var lastY = 0;
   var krLastFraction = 0;
+  // While a programmatic restore is moving the page, its scroll events must
+  // not read as "reading down" — that hid the chrome the moment a half-read
+  // article reopened, with no user gesture at all.
+  var krCalmUntil = 0;
   window.addEventListener('scroll', function(){
     if (ticking) return;
     ticking = true;
     window.requestAnimationFrame(function(){
       var y = document.documentElement.scrollTop;
-      var up = y < lastY - 2;
+      var up = y < lastY - 2 || Date.now() < krCalmUntil;
       lastY = y;
       var sf = scrollFraction();
       krLastFraction = sf;
@@ -343,11 +347,13 @@ body {
   }
   window.krStopSticky = krStopSticky;
   window.krRestore = function(fraction){
+    krCalmUntil = Date.now() + 700;
     krLastFraction = fraction;
     var doc = document.documentElement;
     window.scrollTo(0, (doc.scrollHeight - doc.clientHeight) * fraction);
   };
   window.krRestoreAnchor = function(anchor){
+    krCalmUntil = Date.now() + 700;
     if (!krScrollToAnchor(anchor)) return;
     // Re-pin to the anchor as images/fonts finish loading (they change layout
     // above us), and stop the moment the reader scrolls themselves.
@@ -364,6 +370,7 @@ body {
     var tries = 0;
     krStickyTimer = setInterval(function(){
       if (!krRestoreActive){ krStopSticky(); return; }
+      krCalmUntil = Date.now() + 400;
       reapply();
       if (++tries >= 12) krStopSticky();
     }, 200);
@@ -455,6 +462,13 @@ body {
   // Signal that the document is ready for progress restore.
   window.requestAnimationFrame(function(){
     try { if (window.AndroidReader) AndroidReader.onReady(); } catch(e){}
+    // An article shorter than one screen can never scroll, so no progress
+    // event would ever fire: report completion once so the progress line and
+    // the end-of-article affordances still work. (up=true so nothing hides.)
+    var doc = document.documentElement;
+    if (doc.scrollHeight - doc.clientHeight <= 0) {
+      try { if (window.AndroidReader) AndroidReader.onProgress(1.0, '', true); } catch(e){}
+    }
   });
 })();
 </script>
