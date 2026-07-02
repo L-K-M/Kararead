@@ -5,6 +5,7 @@ import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.data.model.ReaderTheme
 import org.jsoup.Jsoup
 import org.jsoup.safety.Safelist
+import java.util.Locale
 
 /** Palette for a reader theme (CSS color strings). */
 data class ReaderPalette(
@@ -15,6 +16,8 @@ data class ReaderPalette(
     val link: String,
     val border: String,
     val codeBg: String,
+    /** Highlight-mark background (a full CSS color, usually translucent). */
+    val highlight: String,
     /** "dark" or "light" — drives the WebView's color-scheme & scrollbar. */
     val scheme: String,
 )
@@ -25,22 +28,30 @@ object ReaderHtmlBuilder {
         ReaderTheme.LIGHT -> ReaderPalette(
             background = "#fdfdfb", surface = "#f3f3ee", text = "#1b1b1b",
             secondary = "#6b6b6b", link = "#1565c0", border = "#e3e3dd",
-            codeBg = "#f0f0ea", scheme = "light",
+            codeBg = "#f0f0ea", highlight = "rgba(255, 213, 79, 0.55)",
+            scheme = "light",
         )
         ReaderTheme.SEPIA -> ReaderPalette(
             background = "#f4ecd8", surface = "#ece1c7", text = "#4a3f35",
-            secondary = "#7a6a55", link = "#9a5b2b", border = "#ddd0b3",
-            codeBg = "#e9ddc2", scheme = "light",
+            // #6f6049 keeps the warm tone but clears WCAG AA (≥4.5:1) on the
+            // sepia background — the secondary color styles whole blockquotes.
+            secondary = "#6f6049", link = "#9a5b2b", border = "#ddd0b3",
+            codeBg = "#e9ddc2", highlight = "rgba(255, 213, 79, 0.55)",
+            scheme = "light",
         )
         ReaderTheme.DARK -> ReaderPalette(
             background = "#1a1a1a", surface = "#262626", text = "#d8d4cc",
             secondary = "#9a958c", link = "#82b1e6", border = "#333333",
-            codeBg = "#222222", scheme = "dark",
+            // Dimmer amber for dark themes: a 55% wash under light text drops
+            // contrast to ~2.6:1; ~25% keeps the marked text clearly readable.
+            codeBg = "#222222", highlight = "rgba(255, 213, 79, 0.26)",
+            scheme = "dark",
         )
         ReaderTheme.BLACK -> ReaderPalette(
             background = "#000000", surface = "#101010", text = "#cbc7bf",
             secondary = "#8a857c", link = "#82b1e6", border = "#222222",
-            codeBg = "#0c0c0c", scheme = "dark",
+            codeBg = "#0c0c0c", highlight = "rgba(255, 213, 79, 0.22)",
+            scheme = "dark",
         )
     }
 
@@ -59,7 +70,13 @@ object ReaderHtmlBuilder {
         return Jsoup.clean(html, baseUri, safelist)
     }
 
-    fun build(article: ReaderArticle, prefs: ReaderPreferences, baseUri: String? = null, safeTopPx: Int = 0): String {
+    fun build(
+        article: ReaderArticle,
+        prefs: ReaderPreferences,
+        baseUri: String? = null,
+        safeTopPx: Int = 0,
+        systemFontScale: Float = 1f,
+    ): String {
         val palette = paletteFor(prefs.theme)
         val bm = article.bookmark
         val body = article.htmlContent?.let { sanitize(it, baseUri.orEmpty()) }
@@ -82,7 +99,7 @@ object ReaderHtmlBuilder {
 <style>
 ${fontFaceCss()}
 ${baseCss()}
-${variableCss(palette, prefs, safeTopPx)}
+${variableCss(palette, prefs, safeTopPx, systemFontScale)}
 </style>
 </head>
 <body>
@@ -102,9 +119,26 @@ ${progressScript()}
         """.trimIndent()
     }
 
+    /**
+     * The reader's base font size in CSS px. Honors both the in-app text-size
+     * preference and the system font-scale accessibility setting (the WebView's
+     * own scaling is disabled via textZoom=100, so it must be applied here).
+     * Formatted with [Locale.ROOT]: the default locale would emit a decimal
+     * comma ("22,8px") on many locales — invalid CSS that silently breaks the
+     * whole typography scale.
+     */
+    private fun fontSizeCss(prefs: ReaderPreferences, systemFontScale: Float): String {
+        val baseFontPx = 19 * prefs.fontScale * systemFontScale.coerceIn(0.5f, 3f)
+        return String.format(Locale.ROOT, "%.1f", baseFontPx)
+    }
+
     /** Runtime-updatable CSS variables, also emitted as JS for live preference changes. */
-    fun variableCss(palette: ReaderPalette, prefs: ReaderPreferences, safeTopPx: Int = 0): String {
-        val baseFontPx = (19 * prefs.fontScale)
+    fun variableCss(
+        palette: ReaderPalette,
+        prefs: ReaderPreferences,
+        safeTopPx: Int = 0,
+        systemFontScale: Float = 1f,
+    ): String {
         // Head-room so the title clears the (edge-to-edge, overlaid) top app bar.
         // The host passes the status-bar inset + bar height; fall back to the bare
         // top margin when unknown (e.g. tests).
@@ -120,8 +154,9 @@ ${progressScript()}
   --kr-link: ${palette.link};
   --kr-border: ${palette.border};
   --kr-code-bg: ${palette.codeBg};
+  --kr-hl: ${palette.highlight};
   --kr-font: ${prefs.font.cssStack};
-  --kr-font-size: ${"%.1f".format(baseFontPx)}px;
+  --kr-font-size: ${fontSizeCss(prefs, systemFontScale)}px;
   --kr-line-height: ${prefs.lineHeight};
   --kr-margin: ${prefs.horizontalMargin}px;
   --kr-align: ${if (prefs.justify) "justify" else "start"};
@@ -131,8 +166,11 @@ ${progressScript()}
     }
 
     /** JS snippet to apply preference changes without reloading the document. */
-    fun applyPrefsScript(palette: ReaderPalette, prefs: ReaderPreferences): String {
-        val baseFontPx = (19 * prefs.fontScale)
+    fun applyPrefsScript(
+        palette: ReaderPalette,
+        prefs: ReaderPreferences,
+        systemFontScale: Float = 1f,
+    ): String {
         return """
 (function(){
   var r = document.documentElement.style;
@@ -143,8 +181,9 @@ ${progressScript()}
   r.setProperty('--kr-link', '${palette.link}');
   r.setProperty('--kr-border', '${palette.border}');
   r.setProperty('--kr-code-bg', '${palette.codeBg}');
+  r.setProperty('--kr-hl', '${palette.highlight}');
   r.setProperty('--kr-font', "${prefs.font.cssStack}");
-  r.setProperty('--kr-font-size', '${"%.1f".format(baseFontPx)}px');
+  r.setProperty('--kr-font-size', '${fontSizeCss(prefs, systemFontScale)}px');
   r.setProperty('--kr-line-height', '${prefs.lineHeight}');
   r.setProperty('--kr-margin', '${prefs.horizontalMargin}px');
   r.setProperty('--kr-align', '${if (prefs.justify) "justify" else "start"}');
@@ -253,7 +292,10 @@ body {
 .kr-article th, .kr-article td { border: 1px solid var(--kr-border); padding: .5em .7em; text-align: left; }
 .kr-article mark { background: #ffe57f; color: #1b1b1b; padding: 0 .1em; }
 .kr-article mark.kr-hl {
-  background: color-mix(in srgb, #ffd54f 55%, transparent);
+  /* Theme-aware (dimmer on dark themes, where a 55% amber wash under light
+     text lands at ~2.6:1) and plain rgba(), so highlights stay visible on
+     WebViews without color-mix() support (pre-Chromium 111). */
+  background: var(--kr-hl, rgba(255, 213, 79, 0.4));
   color: inherit; padding: 0; border-radius: 2px; cursor: pointer;
   -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }

@@ -207,9 +207,16 @@ fun ReaderWebView(
     val statusBarTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
     val safeTopPx = with(density) { statusBarTopPx.toDp().value }.toInt() +
         READER_TOP_BAR_DP + READER_TOP_GAP_DP
+    // The system font-scale accessibility setting; textZoom is pinned to 100
+    // below, so the reader CSS applies it itself. (A change recreates the
+    // activity, so it's stable for the lifetime of this composition.)
+    val systemFontScale = density.fontScale
     // Build the document once per article; preference changes are applied via JS.
     val html = remember(article.bookmark.id, baseUrl, safeTopPx) {
-        ReaderHtmlBuilder.build(article, prefs, baseUri = baseUrl, safeTopPx = safeTopPx)
+        ReaderHtmlBuilder.build(
+            article, prefs,
+            baseUri = baseUrl, safeTopPx = safeTopPx, systemFontScale = systemFontScale,
+        )
     }
 
     val bridge: ReaderBridge = remember {
@@ -269,7 +276,9 @@ fun ReaderWebView(
                     applied.desiredPrefs?.let { p ->
                         applied.appliedPrefs = p
                         evaluateJavascript(
-                            ReaderHtmlBuilder.applyPrefsScript(ReaderHtmlBuilder.paletteFor(p.theme), p),
+                            ReaderHtmlBuilder.applyPrefsScript(
+                                ReaderHtmlBuilder.paletteFor(p.theme), p, systemFontScale,
+                            ),
                             null,
                         )
                     }
@@ -341,7 +350,10 @@ fun ReaderWebView(
             if (applied.ready) {
                 if (applied.appliedPrefs != prefs) {
                     applied.appliedPrefs = prefs
-                    webView.evaluateJavascript(ReaderHtmlBuilder.applyPrefsScript(palette, prefs), null)
+                    webView.evaluateJavascript(
+                        ReaderHtmlBuilder.applyPrefsScript(palette, prefs, systemFontScale),
+                        null,
+                    )
                 }
                 if (applied.appliedHighlights != highlightsJson) {
                     applied.appliedHighlights = highlightsJson
