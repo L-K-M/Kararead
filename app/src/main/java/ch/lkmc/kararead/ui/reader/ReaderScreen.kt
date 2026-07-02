@@ -102,6 +102,11 @@ fun ReaderScreen(
     val prefs = remember(rawPrefs, systemDark) {
         rawPrefs.copy(theme = rawPrefs.theme.resolve(systemDark))
     }
+    // The reader's overlaid chrome (bars, FAB, progress line) is tinted from the
+    // active reader palette rather than the app theme, so a light app theme +
+    // Dark/Black reader theme no longer slides a bright cream bar over a black
+    // article. Derived from the resolved theme.
+    val chrome = rememberReaderChrome(prefs.theme)
     val speech by viewModel.speech.collectAsStateWithLifecycle()
     val voices by viewModel.voices.collectAsStateWithLifecycle()
     val ttsVoiceId by viewModel.ttsVoiceId.collectAsStateWithLifecycle()
@@ -385,7 +390,7 @@ fun ReaderScreen(
                             Text(
                                 sub!!,
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = chrome.secondary,
                             )
                         }
                     }
@@ -400,8 +405,7 @@ fun ReaderScreen(
                         Icon(
                             if (state.favourited) Icons.Filled.Star else Icons.Outlined.StarBorder,
                             contentDescription = "Favourite",
-                            tint = if (state.favourited) MaterialTheme.colorScheme.primary
-                            else LocalContentColorSafe(),
+                            tint = if (state.favourited) chrome.accent else chrome.onBar,
                         )
                     }
                     IconButton(onClick = { showControls = true }) {
@@ -494,7 +498,10 @@ fun ReaderScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                    containerColor = chrome.bar.copy(alpha = 0.95f),
+                    titleContentColor = chrome.onBar,
+                    navigationIconContentColor = chrome.onBar,
+                    actionIconContentColor = chrome.onBar,
                 ),
             )
         }
@@ -510,6 +517,7 @@ fun ReaderScreen(
                 query = findQuery,
                 matches = findMatches,
                 active = findActive,
+                chrome = chrome,
                 onQueryChange = {
                     findQuery = it
                     finder.find(it)
@@ -547,8 +555,8 @@ fun ReaderScreen(
             }
             androidx.compose.material3.Surface(
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = chrome.bar,
+                contentColor = chrome.onBar,
                 tonalElevation = 3.dp,
                 shadowElevation = 4.dp,
             ) {
@@ -571,7 +579,7 @@ fun ReaderScreen(
                     .navigationBarsPadding()
                     .fillMaxWidth()
                     .height(3.dp),
-                color = MaterialTheme.colorScheme.primary,
+                color = chrome.accent,
                 trackColor = Color.Transparent,
                 gapSize = 0.dp,
                 drawStopIndicator = {},
@@ -591,6 +599,8 @@ fun ReaderScreen(
             androidx.compose.material3.ExtendedFloatingActionButton(
                 modifier = Modifier.onSizeChanged { finishFabHeightPx = it.height },
                 onClick = { advance(true) },
+                containerColor = chrome.bar,
+                contentColor = chrome.onBar,
                 icon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
                 text = {
                     Column {
@@ -621,6 +631,7 @@ fun ReaderScreen(
             ListenBar(
                 speech = speech,
                 rate = ttsRate,
+                chrome = chrome,
                 onCycleRate = { viewModel.setSpeechRate(nextSpeechRate(ttsRate)) },
                 onToggle = viewModel::toggleSpeech,
                 onPrev = { viewModel.skipSpeech(-1) },
@@ -792,6 +803,7 @@ private fun FindBar(
     query: String,
     matches: Int,
     active: Int,
+    chrome: ReaderChrome,
     onQueryChange: (String) -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
@@ -804,7 +816,8 @@ private fun FindBar(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+        color = chrome.bar.copy(alpha = 0.98f),
+        contentColor = chrome.onBar,
         tonalElevation = 3.dp,
         shadowElevation = 4.dp,
     ) {
@@ -837,7 +850,7 @@ private fun FindBar(
                         Text(
                             label,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = chrome.secondary,
                             modifier = Modifier.padding(end = 12.dp),
                         )
                     }
@@ -863,6 +876,7 @@ private fun FindBar(
 private fun ListenBar(
     speech: ch.lkmc.kararead.tts.SpeechState,
     rate: Float,
+    chrome: ReaderChrome,
     onCycleRate: () -> Unit,
     onToggle: () -> Unit,
     onPrev: () -> Unit,
@@ -875,7 +889,8 @@ private fun ListenBar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 10.dp),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        color = chrome.bar,
+        contentColor = chrome.onBar,
         tonalElevation = 3.dp,
         shadowElevation = 6.dp,
     ) {
@@ -898,7 +913,7 @@ private fun ListenBar(
             Text(
                 text = "Listening · ${(speech.index + 1).coerceAtMost(speech.total)}/${speech.total}",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = chrome.onBar,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp),
@@ -912,7 +927,7 @@ private fun ListenBar(
                 Text(
                     formatSpeechRate(rate),
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = chrome.onBar,
                 )
             }
             if (onVoice != null) {
@@ -1000,8 +1015,32 @@ private tailrec fun android.content.Context.findVolumeKeyController(): ch.lkmc.k
         else -> null
     }
 
+/**
+ * Colors for the reader's overlaid chrome, derived from the active reader
+ * palette so the bars/FAB/progress line match the page (a light app theme no
+ * longer puts a bright bar over a Dark/Black article).
+ */
+private data class ReaderChrome(
+    val bar: Color,
+    val onBar: Color,
+    val secondary: Color,
+    val accent: Color,
+)
+
 @Composable
-private fun LocalContentColorSafe(): Color = MaterialTheme.colorScheme.onSurfaceVariant
+private fun rememberReaderChrome(theme: ch.lkmc.kararead.data.model.ReaderTheme): ReaderChrome {
+    return remember(theme) {
+        val p = ch.lkmc.kararead.reader.ReaderHtmlBuilder.paletteFor(theme)
+        fun parse(hex: String, fallback: Color) =
+            runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(fallback)
+        ReaderChrome(
+            bar = parse(p.surface, Color.White),
+            onBar = parse(p.text, Color.Black),
+            secondary = parse(p.secondary, Color.Gray),
+            accent = parse(p.link, Color.Blue),
+        )
+    }
+}
 
 /** "≈9:42 PM" — the locale-formatted wall-clock time [minutesLeft] from now. */
 private fun finishByLabel(context: android.content.Context, minutesLeft: Int): String {
