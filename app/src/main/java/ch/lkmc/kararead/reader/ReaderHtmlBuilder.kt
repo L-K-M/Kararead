@@ -7,6 +7,15 @@ import org.jsoup.Jsoup
 import org.jsoup.safety.Safelist
 import java.util.Locale
 
+/** One article heading, for the table of contents. */
+data class ReaderHeading(
+    /** Ordinal among all h1–h4 in document order (matches the WebView selector). */
+    val index: Int,
+    /** 1–4; used to indent the entry. */
+    val level: Int,
+    val text: String,
+)
+
 /** Palette for a reader theme (CSS color strings). */
 data class ReaderPalette(
     val background: String,
@@ -67,6 +76,32 @@ object ReaderHtmlBuilder {
      */
     fun sanitizeBody(html: String?, baseUri: String?): String? =
         html?.let { sanitize(it, baseUri.orEmpty()) }
+
+    /**
+     * The article's headings, for a table of contents. [ReaderHeading.index] is
+     * the heading's ordinal among all h1–h4 in document order, matching the same
+     * `querySelectorAll` order the WebView's `krScrollToHeading` uses — so an
+     * index here scrolls to the right heading there.
+     */
+    fun tableOfContents(sanitizedBody: String?): List<ReaderHeading> {
+        if (sanitizedBody.isNullOrBlank()) return emptyList()
+        return runCatching {
+            Jsoup.parseBodyFragment(sanitizedBody)
+                .select("h1, h2, h3, h4")
+                .mapIndexedNotNull { i, el ->
+                    val text = el.text().trim()
+                    if (text.isEmpty()) {
+                        null
+                    } else {
+                        ReaderHeading(
+                            index = i,
+                            level = el.tagName().removePrefix("h").toIntOrNull() ?: 2,
+                            text = text,
+                        )
+                    }
+                }
+        }.getOrDefault(emptyList())
+    }
 
     /** Sanitize crawled HTML: keep rich structure, drop scripts/styles/iframes. */
     private fun sanitize(html: String, baseUri: String): String {
@@ -416,6 +451,16 @@ body {
     krStopSticky();
     var doc = document.documentElement;
     window.scrollTo({ top: (doc.scrollHeight - doc.clientHeight) * f, left: 0, behavior: 'smooth' });
+  };
+
+  // Jump to the Nth article heading (table of contents). The selector/order
+  // matches ReaderHtmlBuilder.tableOfContents so the host's index lines up.
+  window.krScrollToHeading = function(index){
+    krStopSticky();
+    var hs = document.querySelectorAll('#kr-content .kr-article h1, #kr-content .kr-article h2, #kr-content .kr-article h3, #kr-content .kr-article h4');
+    var el = hs[index];
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return !!el;
   };
 
   // Restore position. Prefer the block anchor; fall back to a raw fraction for
