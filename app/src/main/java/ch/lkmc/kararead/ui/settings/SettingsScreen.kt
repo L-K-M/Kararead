@@ -2,6 +2,7 @@ package ch.lkmc.kararead.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -220,6 +221,40 @@ fun SettingsScreen(
                     actionLabel = "Clear",
                 )
             }
+
+            HorizontalDivider()
+            SectionHeader("Backup")
+            // Reading progress, streaks and stats live only on this device.
+            // CreateDocument/OpenDocument hand back a one-shot document URI — a
+            // single portable JSON file, no folder permission to persist.
+            val backupLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/json"),
+            ) { uri ->
+                if (uri != null) viewModel.backUp(uri) { msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            }
+            val restoreLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                if (uri != null) viewModel.restore(uri) { msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            }
+            SettingRow(
+                title = "Back up reading data",
+                subtitle = "Save your reading positions, streaks and stats to a file — " +
+                    "none of it lives on the Karakeep server.",
+                onClick = { backupLauncher.launch("kararead-backup.json") },
+                actionLabel = "Export",
+            )
+            SettingRow(
+                title = "Restore reading data",
+                subtitle = "Merge a backup back in. Existing positions and today's " +
+                    "reading are never overwritten.",
+                onClick = { restoreLauncher.launch(arrayOf("application/json")) },
+                actionLabel = "Import",
+            )
 
             HorizontalDivider()
             SectionHeader("About")

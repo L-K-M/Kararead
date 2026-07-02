@@ -35,6 +35,9 @@ import ch.lkmc.kararead.data.remote.toReaderArticle
 import ch.lkmc.kararead.data.paging.BookmarksPagingSource
 import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.work.PendingOpSync
+import ch.lkmc.kararead.util.LocalBackup
+import ch.lkmc.kararead.util.ProgressEntry
+import ch.lkmc.kararead.util.ReadingDayEntry
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.util.computeReadingStats
 import kotlinx.coroutines.NonCancellable
@@ -42,6 +45,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.combine
@@ -633,6 +637,57 @@ class KarakeepRepository @Inject constructor(
     /** Raw reading seconds keyed by ISO date, for the stats chart. */
     fun readingSecondsByDate(): Flow<Map<String, Long>> =
         statsDao.observeAll().map { rows -> rows.associate { it.date to it.seconds } }
+
+    // --- Local backup (H9) ---
+
+    /** Snapshot the local-only data (reading progress + per-day tally) for backup. */
+    suspend fun exportLocalData(): LocalBackup {
+        val progress = progressDao.observeAll().first().map {
+            ProgressEntry(it.bookmarkId, it.fraction, it.updatedAt, it.anchor)
+        }
+        val days = statsDao.observeAll().first().map {
+            ReadingDayEntry(it.date, it.seconds, it.updatedAt)
+        }
+        return LocalBackup(
+            exportedAt = System.currentTimeMillis(),
+            progress = progress,
+            readingDays = days,
+        )
+    }
+
+    /** How many rows a [importLocalData] restore actually applied. */
+    data class ImportSummary(val progress: Int, val days: Int)
+
+    /**
+     * Merge a [LocalBackup] into the local data, non-destructively: a reading
+     * position is overwritten only by a strictly newer one, and a day's tally
+     * only ever grows (max of the two). So restoring an old backup can't erase
+     * today's fresh reading, and re-importing the same file is a no-op.
+     */
+    suspend fun importLocalData(backup: LocalBackup): ImportSummary {
+        var progressApplied = 0
+        for (entry in backup.progress) {
+            val existing = progressDao.get(entry.bookmarkId)
+            if (existing == null || entry.updatedAt > existing.updatedAt) {
+                progressDao.upsert(
+                    ReadingProgressEntity(entry.bookmarkId, entry.fraction, entry.updatedAt, entry.anchor),
+                )
+                progressApplied++
+            }
+        }
+        var daysApplied = 0
+        for (entry in backup.readingDays) {
+            val existing = statsDao.get(entry.date)
+            val merged = maxOf(existing?.seconds ?: 0L, entry.seconds)
+            if (existing == null || merged != existing.seconds) {
+                statsDao.upsert(
+                    ReadingDayEntity(entry.date, merged, maxOf(existing?.updatedAt ?: 0L, entry.updatedAt)),
+                )
+                daysApplied++
+            }
+        }
+        return ImportSummary(progressApplied, daysApplied)
+    }
 
     suspend fun clearCache() {
         cacheDao.clear()

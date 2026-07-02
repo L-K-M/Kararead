@@ -8,7 +8,9 @@ import ch.lkmc.kararead.data.local.HighlightOpDao
 import ch.lkmc.kararead.data.local.HighlightOpEntity
 import ch.lkmc.kararead.data.local.PendingOpDao
 import ch.lkmc.kararead.data.local.PendingOpEntity
+import ch.lkmc.kararead.data.local.ReadingDayEntity
 import ch.lkmc.kararead.data.local.ReadingProgressDao
+import ch.lkmc.kararead.data.local.ReadingProgressEntity
 import ch.lkmc.kararead.data.local.ReadingStatsDao
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.remote.KarakeepApi
@@ -21,13 +23,18 @@ import ch.lkmc.kararead.data.remote.dto.PaginatedBookmarksDto
 import ch.lkmc.kararead.data.remote.dto.PaginatedHighlightsDto
 import ch.lkmc.kararead.data.remote.dto.UpdateBookmarkRequest
 import ch.lkmc.kararead.reader.AssetLoader
+import ch.lkmc.kararead.util.LocalBackup
+import ch.lkmc.kararead.util.ProgressEntry
+import ch.lkmc.kararead.util.ReadingDayEntry
 import ch.lkmc.kararead.work.PendingOpSync
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 
@@ -401,5 +408,64 @@ class KarakeepRepositoryTest {
 
         coVerify { highlightDao.deleteSyncedForBookmark("b") }
         coVerify { highlightDao.upsertAll(match { list -> list.size == 1 && list.first().id == "srv2" }) }
+    }
+
+    // --- Local backup (H9) ---
+
+    @Test
+    fun `export snapshots progress and reading days`() = runTest {
+        every { progressDao.observeAll() } returns flowOf(
+            listOf(ReadingProgressEntity("a", 0.4f, 5L, anchor = "1:0.1")),
+        )
+        every { statsDao.observeAll() } returns flowOf(
+            listOf(ReadingDayEntity("2026-06-15", 600L, 7L)),
+        )
+
+        val backup = repo.exportLocalData()
+
+        assertEquals(1, backup.progress.size)
+        assertEquals("a", backup.progress.first().bookmarkId)
+        assertEquals("1:0.1", backup.progress.first().anchor)
+        assertEquals(1, backup.readingDays.size)
+        assertEquals(600L, backup.readingDays.first().seconds)
+    }
+
+    @Test
+    fun `import keeps the newer reading position and adds unseen ones`() = runTest {
+        // Local "a" is newer than the backup's copy → keep local; "b" is new.
+        coEvery { progressDao.get("a") } returns ReadingProgressEntity("a", 0.9f, 100L, null)
+        coEvery { progressDao.get("b") } returns null
+
+        val summary = repo.importLocalData(
+            LocalBackup(
+                progress = listOf(
+                    ProgressEntry("a", 0.1f, 50L, null),   // older → ignored
+                    ProgressEntry("b", 0.7f, 80L, null),   // unseen → applied
+                ),
+            ),
+        )
+
+        assertEquals(1, summary.progress)
+        coVerify(exactly = 0) { progressDao.upsert(match { it.bookmarkId == "a" }) }
+        coVerify { progressDao.upsert(match { it.bookmarkId == "b" && it.fraction == 0.7f }) }
+    }
+
+    @Test
+    fun `import grows a day tally but never shrinks it`() = runTest {
+        coEvery { statsDao.get("d1") } returns ReadingDayEntity("d1", 600L, 1L) // already higher
+        coEvery { statsDao.get("d2") } returns ReadingDayEntity("d2", 100L, 1L) // backup has more
+
+        val summary = repo.importLocalData(
+            LocalBackup(
+                readingDays = listOf(
+                    ReadingDayEntry("d1", 300L, 9L),
+                    ReadingDayEntry("d2", 500L, 9L),
+                ),
+            ),
+        )
+
+        assertEquals(1, summary.days)
+        coVerify(exactly = 0) { statsDao.upsert(match { it.date == "d1" }) }
+        coVerify { statsDao.upsert(match { it.date == "d2" && it.seconds == 500L }) }
     }
 }
