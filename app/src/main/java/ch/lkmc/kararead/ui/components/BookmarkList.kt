@@ -91,7 +91,6 @@ fun BookmarkList(
             onOpen = onOpen,
             onArchive = onArchive,
             onFavourite = onFavourite,
-            archiveIsRestore = archiveIsRestore,
         )
     }
 
