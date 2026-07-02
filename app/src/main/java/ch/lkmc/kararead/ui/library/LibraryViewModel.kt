@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -123,10 +124,18 @@ class LibraryViewModel @Inject constructor(
             settings.queueSort.collect { sort.value = it }
         }
         viewModelScope.launch {
-            settings.readLaterList.collect { rl ->
+            // distinctUntilChanged matters: the underlying DataStore flow
+            // re-emits on EVERY settings write (sort, typography sliders, ...),
+            // and each emission used to teleport a deliberately-chosen Inbox
+            // tab back to the read-later list.
+            settings.readLaterList.distinctUntilChanged().collect { rl ->
+                val wasUnset = readLater.value == null
                 readLater.value = rl
-                // Default to the read-later list as the home tab if configured.
-                if (rl != null && tab.value == LibraryTab.INBOX) tab.value = LibraryTab.READ_LATER
+                // Default to the read-later list as the home tab only when it
+                // first becomes known (startup, or the user just picked one).
+                if (rl != null && wasUnset && tab.value == LibraryTab.INBOX) {
+                    tab.value = LibraryTab.READ_LATER
+                }
             }
         }
         // Hide articles archived elsewhere (e.g. finished from the reader's
