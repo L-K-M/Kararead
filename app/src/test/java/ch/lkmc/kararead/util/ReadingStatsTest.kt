@@ -73,6 +73,24 @@ class ReadingStatsTest {
     }
 
     @Test
+    fun `heatmap is a full week-aligned grid ending with today's week`() {
+        // today = 2026-06-15 is a Monday, so it starts the final column.
+        val data = mapOf(day(0) to 300L, day(7) to 600L)
+        val grid = readingHeatmap(data, weeks = 4, today = today)
+
+        assertEquals(28, grid.size)
+        val todayCell = grid[21] // first day of the last (4th) week
+        assertEquals(today, todayCell.date)
+        assertEquals(true, todayCell.isToday)
+        assertEquals(5, todayCell.minutes) // 300s → 5 min
+        // A week ago (also a Monday) sits one column earlier.
+        assertEquals(10, grid[14].minutes) // 600s → 10 min
+        // The rest of the final column is after today.
+        assertEquals(true, grid[22].future)
+        assertEquals(false, todayCell.future)
+    }
+
+    @Test
     fun `longest streak spans a historical run`() {
         val stats = computeReadingStats(
             mapOf(

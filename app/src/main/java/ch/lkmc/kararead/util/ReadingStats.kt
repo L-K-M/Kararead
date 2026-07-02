@@ -36,6 +36,41 @@ fun recentDaysSeries(
     DayMinutes(date = date, minutes = (secs / 60).toInt(), isToday = offset == 0)
 }
 
+/** One cell of the reading heatmap. [future] cells (after today) render blank. */
+data class HeatmapDay(
+    val date: LocalDate,
+    val minutes: Int,
+    val isToday: Boolean,
+    val future: Boolean,
+)
+
+/**
+ * A GitHub-style reading heatmap: [weeks] Monday-started columns ending with the
+ * week that contains today, each a full 7 days (Mon…Sun). Days after today fill
+ * out the final column as [HeatmapDay.future] so the grid stays rectangular.
+ * Returned in column-major order (week by week, each week Mon→Sun).
+ */
+fun readingHeatmap(
+    secondsByDate: Map<String, Long>,
+    weeks: Int = 13,
+    today: LocalDate = LocalDate.now(),
+): List<HeatmapDay> {
+    // Monday of the current week (ISO: Mon=1 … Sun=7), then back to the grid's
+    // first column so the last column holds today.
+    val startOfThisWeek = today.minusDays((today.dayOfWeek.value - 1).toLong())
+    val gridStart = startOfThisWeek.minusWeeks((weeks - 1).toLong())
+    return (0 until weeks * 7).map { i ->
+        val date = gridStart.plusDays(i.toLong())
+        val secs = secondsByDate[date.toString()] ?: 0L
+        HeatmapDay(
+            date = date,
+            minutes = (secs / 60).toInt(),
+            isToday = date == today,
+            future = date.isAfter(today),
+        )
+    }
+}
+
 /** Minutes read over the trailing [days] days (inclusive of today). */
 fun minutesInLastDays(
     secondsByDate: Map<String, Long>,

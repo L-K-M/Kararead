@@ -1,6 +1,7 @@
 package ch.lkmc.kararead.ui.stats
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -70,6 +72,10 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
             Text("Last 14 days", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             BarChart(state.last14Days)
+            Spacer(Modifier.height(24.dp))
+            Text("Reading habit", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Heatmap(state.heatmap)
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -184,6 +190,56 @@ private fun BarChart(days: List<DayMinutes>) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
+            }
+        }
+    }
+}
+
+/**
+ * A GitHub-style contribution grid of the reading habit: one small square per
+ * day, columns = weeks (Mon…Sun top to bottom), tinted by minutes read.
+ */
+@Composable
+private fun Heatmap(days: List<ch.lkmc.kararead.util.HeatmapDay>) {
+    if (days.isEmpty()) return
+    val weeks = days.chunked(7)
+    val base = MaterialTheme.colorScheme.primary
+    val empty = MaterialTheme.colorScheme.surfaceVariant
+    // Four intensity buckets by minutes read (0 = empty).
+    fun cellColor(minutes: Int): androidx.compose.ui.graphics.Color = when {
+        minutes <= 0 -> empty
+        minutes < 5 -> base.copy(alpha = 0.30f)
+        minutes < 15 -> base.copy(alpha = 0.52f)
+        minutes < 30 -> base.copy(alpha = 0.74f)
+        else -> base
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        weeks.forEach { week ->
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                week.forEach { day ->
+                    Box(
+                        Modifier
+                            .size(14.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                when {
+                                    day.future -> androidx.compose.ui.graphics.Color.Transparent
+                                    else -> cellColor(day.minutes)
+                                },
+                            )
+                            .then(
+                                if (day.isToday) {
+                                    Modifier.border(
+                                        1.5.dp,
+                                        MaterialTheme.colorScheme.onSurface,
+                                        RoundedCornerShape(3.dp),
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    )
+                }
             }
         }
     }
