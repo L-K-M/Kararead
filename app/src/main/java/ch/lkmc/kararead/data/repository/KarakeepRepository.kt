@@ -4,6 +4,10 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import ch.lkmc.kararead.data.local.CachedArticleDao
+import ch.lkmc.kararead.data.local.CachedHighlightDao
+import ch.lkmc.kararead.data.local.CachedHighlightEntity
+import ch.lkmc.kararead.data.local.HighlightOpDao
+import ch.lkmc.kararead.data.local.HighlightOpEntity
 import ch.lkmc.kararead.data.local.PendingOpDao
 import ch.lkmc.kararead.data.local.PendingOpEntity
 import ch.lkmc.kararead.data.local.ReadingDayEntity
@@ -40,8 +44,10 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.util.UUID
 import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -70,6 +76,8 @@ class KarakeepRepository @Inject constructor(
     private val pendingOpDao: PendingOpDao,
     private val pendingOpSync: PendingOpSync,
     private val assetLoader: AssetLoader,
+    private val highlightDao: CachedHighlightDao,
+    private val highlightOpDao: HighlightOpDao,
 ) {
     private fun api(): KarakeepApi = apiProvider.api()
     private val assetResolver: (String) -> String? = { apiProvider.assetUrl(it) }
@@ -341,11 +349,48 @@ class KarakeepRepository @Inject constructor(
     suspend fun getTags(): List<Tag> =
         api().getTags().tags.map { it.toDomain() }.sortedByDescending { it.count }
 
-    suspend fun getHighlights(bookmarkId: String): List<Highlight> =
-        api().getBookmarkHighlights(bookmarkId).highlights.map { it.toDomain() }
+    // Highlights are cache-first and offline-capable: the reader observes the
+    // local cache, and create/note/delete mutations fall back to an outbox
+    // (highlight_op) that the same WorkManager sync as the archive/favourite
+    // outbox replays once the server is reachable again.
 
-    /** Every highlight across all bookmarks, newest first, paged in up to [max]. */
-    suspend fun getAllHighlights(max: Int = 1000): List<Highlight> {
+    private fun CachedHighlightEntity.toDomain() =
+        Highlight(id, bookmarkId, startOffset, endOffset, color, text, note)
+
+    private fun Highlight.toCacheEntity(synced: Boolean, updatedAt: Long = System.currentTimeMillis()) =
+        CachedHighlightEntity(id, bookmarkId, startOffset, endOffset, color, text, note, updatedAt, synced)
+
+    /** The cached highlights for an article, reactive so offline edits show at once. */
+    fun observeHighlights(bookmarkId: String): Flow<List<Highlight>> =
+        highlightDao.observeForBookmark(bookmarkId).map { rows -> rows.map { it.toDomain() } }
+
+    /**
+     * Pull the server's highlights for an article into the cache (best-effort;
+     * a no-op offline). Server rows are authoritative, but unsynced local
+     * highlights are kept, and any the user deleted offline (a queued DELETE)
+     * aren't resurrected.
+     */
+    suspend fun refreshHighlights(bookmarkId: String) {
+        val server = runCatching {
+            api().getBookmarkHighlights(bookmarkId).highlights.map { it.toDomain() }
+        }.getOrNull() ?: return
+        val pendingDeletes = highlightOpDao.all()
+            .filter { it.type == HighlightOpEntity.TYPE_DELETE }
+            .map { it.highlightId }
+            .toSet()
+        val fresh = server
+            .filterNot { it.id in pendingDeletes }
+            .map { it.toCacheEntity(synced = true) }
+        highlightDao.deleteSyncedForBookmark(bookmarkId)
+        highlightDao.upsertAll(fresh)
+    }
+
+    /**
+     * Every highlight across all bookmarks (for the Highlights screen). Server
+     * order when reachable — and the results refill the cache — falling back to
+     * whatever is cached when offline.
+     */
+    suspend fun getAllHighlights(max: Int = 1000): List<Highlight> = runCatching {
         val out = mutableListOf<Highlight>()
         var cursor: String? = null
         do {
@@ -356,15 +401,45 @@ class KarakeepRepository @Inject constructor(
             out += page.highlights.map { it.toDomain() }
             cursor = page.nextCursor
         } while (cursor != null && out.size < max)
-        return out
+        runCatching { highlightDao.upsertAll(out.map { it.toCacheEntity(synced = true) }) }
+        out
+    }.getOrElse {
+        highlightDao.all().map { it.toDomain() }
     }
 
     /** Lightweight bookmark metadata (no body) — used to label highlights. */
     suspend fun getBookmarkMeta(bookmarkId: String): Bookmark =
         api().getBookmark(bookmarkId, includeContent = false).toDomain(assetResolver)
 
-    suspend fun updateHighlightNote(id: String, note: String): Highlight =
-        api().updateHighlight(id, UpdateHighlightRequest(note = note)).toDomain()
+    suspend fun updateHighlightNote(id: String, note: String): Highlight = withContext(NonCancellable) {
+        val existing = highlightDao.get(id)
+        existing?.let { highlightDao.upsert(it.copy(note = note, updatedAt = System.currentTimeMillis())) }
+        val isLocal = id.startsWith(CachedHighlightEntity.LOCAL_ID_PREFIX)
+        if (!isLocal) {
+            val server = runCatching {
+                api().updateHighlight(id, UpdateHighlightRequest(note = note)).toDomain()
+            }.getOrNull()
+            if (server != null) {
+                highlightDao.upsert(server.toCacheEntity(synced = true))
+                return@withContext server
+            }
+        }
+        // Offline, or the highlight itself is still a queued create: park the
+        // note in the outbox (collapsing repeated edits into one op).
+        highlightOpDao.deleteForHighlightAndType(id, HighlightOpEntity.TYPE_UPDATE_NOTE)
+        highlightOpDao.insert(
+            HighlightOpEntity(
+                highlightId = id,
+                bookmarkId = existing?.bookmarkId.orEmpty(),
+                type = HighlightOpEntity.TYPE_UPDATE_NOTE,
+                note = note,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+        pendingOpSync.schedule()
+        (existing?.copy(note = note))?.toDomain()
+            ?: Highlight(id, existing?.bookmarkId.orEmpty(), 0, 0, "yellow", null, note)
+    }
 
     suspend fun createHighlight(
         bookmarkId: String,
@@ -372,17 +447,127 @@ class KarakeepRepository @Inject constructor(
         endOffset: Int,
         text: String?,
         color: String = "yellow",
-    ): Highlight = api().createHighlight(
-        ch.lkmc.kararead.data.remote.dto.CreateHighlightRequest(
-            bookmarkId = bookmarkId,
-            startOffset = startOffset,
-            endOffset = endOffset,
-            color = color,
-            text = text,
-        ),
-    ).toDomain()
+    ): Highlight = withContext(NonCancellable) {
+        val localId = CachedHighlightEntity.LOCAL_ID_PREFIX + UUID.randomUUID()
+        val local = Highlight(localId, bookmarkId, startOffset, endOffset, color, text, null)
+        // Show it in the reader immediately, before the network round trip.
+        highlightDao.upsert(local.toCacheEntity(synced = false))
+        val created = runCatching {
+            api().createHighlight(
+                ch.lkmc.kararead.data.remote.dto.CreateHighlightRequest(
+                    bookmarkId = bookmarkId,
+                    startOffset = startOffset,
+                    endOffset = endOffset,
+                    color = color,
+                    text = text,
+                ),
+            ).toDomain()
+        }.getOrNull()
+        if (created != null) {
+            highlightDao.delete(localId)
+            highlightDao.upsert(created.toCacheEntity(synced = true))
+            created
+        } else {
+            highlightOpDao.insert(
+                HighlightOpEntity(
+                    highlightId = localId,
+                    bookmarkId = bookmarkId,
+                    type = HighlightOpEntity.TYPE_CREATE,
+                    startOffset = startOffset,
+                    endOffset = endOffset,
+                    color = color,
+                    text = text,
+                    createdAt = System.currentTimeMillis(),
+                ),
+            )
+            pendingOpSync.schedule()
+            local
+        }
+    }
 
-    suspend fun deleteHighlight(id: String) = api().deleteHighlight(id)
+    suspend fun deleteHighlight(id: String) = withContext(NonCancellable) {
+        val existing = highlightDao.get(id)
+        highlightDao.delete(id)
+        if (id.startsWith(CachedHighlightEntity.LOCAL_ID_PREFIX)) {
+            // Never reached the server: drop its queued create/note; nothing to delete remotely.
+            highlightOpDao.deleteForHighlight(id)
+            return@withContext
+        }
+        val deleted = runCatching { api().deleteHighlight(id); true }.getOrDefault(false)
+        if (deleted) {
+            highlightOpDao.deleteForHighlight(id)
+        } else {
+            // A pending note is moot once the highlight is going away.
+            highlightOpDao.deleteForHighlightAndType(id, HighlightOpEntity.TYPE_UPDATE_NOTE)
+            highlightOpDao.insert(
+                HighlightOpEntity(
+                    highlightId = id,
+                    bookmarkId = existing?.bookmarkId.orEmpty(),
+                    type = HighlightOpEntity.TYPE_DELETE,
+                    createdAt = System.currentTimeMillis(),
+                ),
+            )
+            pendingOpSync.schedule()
+        }
+    }
+
+    /**
+     * Replay the highlights outbox in order. A queued create's local id is
+     * rewritten to the server id (in the cache and later ops) once it lands.
+     * Error handling mirrors [flushPendingOps]: 4xx dropped, 5xx capped, and
+     * transport errors kept indefinitely.
+     */
+    suspend fun flushHighlightOps(): Boolean {
+        var allCleared = true
+        val remap = mutableMapOf<String, String>()
+        for (op in highlightOpDao.all()) {
+            val effectiveId = remap[op.highlightId] ?: op.highlightId
+            val result = runCatching {
+                when (op.type) {
+                    HighlightOpEntity.TYPE_CREATE -> {
+                        val created = api().createHighlight(
+                            ch.lkmc.kararead.data.remote.dto.CreateHighlightRequest(
+                                bookmarkId = op.bookmarkId,
+                                startOffset = op.startOffset,
+                                endOffset = op.endOffset,
+                                color = op.color,
+                                text = op.text,
+                            ),
+                        ).toDomain()
+                        // Swap the optimistic local row for the server's, keeping
+                        // any note the user added while it was still local.
+                        val local = highlightDao.get(op.highlightId)
+                        highlightDao.delete(op.highlightId)
+                        highlightDao.upsert(created.toCacheEntity(synced = true).copy(note = local?.note))
+                        highlightOpDao.remapHighlightId(op.highlightId, created.id)
+                        remap[op.highlightId] = created.id
+                    }
+                    HighlightOpEntity.TYPE_UPDATE_NOTE ->
+                        api().updateHighlight(effectiveId, UpdateHighlightRequest(note = op.note.orEmpty()))
+                    HighlightOpEntity.TYPE_DELETE ->
+                        api().deleteHighlight(effectiveId)
+                    else -> Unit
+                }
+            }
+            val error = result.exceptionOrNull()
+            when {
+                result.isSuccess -> highlightOpDao.delete(op.id)
+                error is kotlinx.coroutines.CancellationException -> throw error
+                error is retrofit2.HttpException && error.code() in 400..499 -> highlightOpDao.delete(op.id)
+                error is retrofit2.HttpException -> {
+                    val attempts = op.attempts + 1
+                    if (attempts >= MAX_SYNC_ATTEMPTS) {
+                        highlightOpDao.delete(op.id)
+                    } else {
+                        highlightOpDao.setAttempts(op.id, attempts)
+                        allCleared = false
+                    }
+                }
+                else -> allCleared = false
+            }
+        }
+        return allCleared
+    }
 
     // --- Connection test ---
 
@@ -453,8 +638,9 @@ class KarakeepRepository @Inject constructor(
         cacheDao.clear()
     }
 
-    /** How many offline archive/favourite changes are still waiting to sync. */
-    fun pendingOpCount(): Flow<Int> = pendingOpDao.observeCount()
+    /** How many offline changes (archive/favourite + highlight edits) await sync. */
+    fun pendingOpCount(): Flow<Int> =
+        combine(pendingOpDao.observeCount(), highlightOpDao.observeCount()) { a, b -> a + b }
 
     /** Ask WorkManager to replay the outbox now (manual "Retry"). */
     fun retryPendingOps() {
@@ -472,6 +658,8 @@ class KarakeepRepository @Inject constructor(
         runCatching { pendingOpDao.clear() }
         runCatching { progressDao.clear() }
         runCatching { statsDao.clear() }
+        runCatching { highlightDao.clear() }
+        runCatching { highlightOpDao.clear() }
     }
 
     suspend fun cachedCount(): Int = cacheDao.count()

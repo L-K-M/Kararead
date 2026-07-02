@@ -156,6 +156,11 @@ class ReaderViewModel @Inject constructor(
 
     init {
         load()
+        // Highlights are cache-first: observe the local cache so offline creates
+        // and deletes appear at once (load() kicks a server refresh into it).
+        viewModelScope.launch {
+            repository.observeHighlights(bookmarkId).collect { _highlights.value = it }
+        }
         // Keep the speaker's preferred voice in sync with the saved setting so the
         // first "Listen" already uses it.
         viewModelScope.launch {
@@ -211,8 +216,9 @@ class ReaderViewModel @Inject constructor(
                             }
                         }
                     }
-                    runCatching { repository.getHighlights(bookmarkId) }
-                        .onSuccess { _highlights.value = it }
+                    // Pull the latest highlights into the cache; the observer
+                    // above renders them (and any offline edits) reactively.
+                    launch { runCatching { repository.refreshHighlights(bookmarkId) } }
                     launch {
                         val next = runCatching { repository.nextInboxBookmark(bookmarkId) }.getOrNull()
                         _nextUp.value = next
@@ -315,52 +321,34 @@ class ReaderViewModel @Inject constructor(
         lastHighlightSig = sig
         lastHighlightAt = now
         viewModelScope.launch {
+            // The repository writes the cache optimistically and queues an
+            // outbox op when offline, so this succeeds either way; the cache
+            // observer surfaces the new highlight. Only a real error toasts.
             runCatching { repository.createHighlight(bookmarkId, start, end, text.trim()) }
-                .onSuccess { created ->
-                    _highlights.update { it + created }
+                .onSuccess {
                     _messages.trySend("Highlighted")
                     scheduleHighlightAutoSave()
                 }
-                .onFailure {
-                    _messages.trySend("Couldn't save highlight — try again")
-                }
+                .onFailure { _messages.trySend("Couldn't save highlight — try again") }
         }
     }
 
     /** Set (or clear, with a blank string) the note attached to a highlight. */
     fun updateHighlightNote(id: String, note: String) {
-        val trimmed = note.trim()
-        val previous = _highlights.value.firstOrNull { it.id == id }?.note
-        // Optimistic local update so the sheet reflects the change immediately.
-        _highlights.update { list -> list.map { if (it.id == id) it.copy(note = trimmed) else it } }
-        scheduleHighlightAutoSave()
         viewModelScope.launch {
-            runCatching { repository.updateHighlightNote(id, trimmed) }
-                .onSuccess { updated -> _highlights.update { l -> l.map { if (it.id == id) updated else it } } }
-                .onFailure {
-                    // Revert: keeping the unsaved note (and auto-exporting it)
-                    // would silently diverge from the server.
-                    _highlights.update { l -> l.map { h -> if (h.id == id) h.copy(note = previous) else h } }
-                    scheduleHighlightAutoSave()
-                    _messages.trySend("Couldn't save note — try again")
-                }
+            // Cache-first (offline notes go to the outbox); the observer reflects it.
+            runCatching { repository.updateHighlightNote(id, note.trim()) }
+                .onSuccess { scheduleHighlightAutoSave() }
+                .onFailure { _messages.trySend("Couldn't save note — try again") }
         }
     }
 
     fun removeHighlight(id: String) {
-        val removed = _highlights.value.firstOrNull { it.id == id } ?: return
-        _highlights.update { list -> list.filterNot { it.id == id } }
-        scheduleHighlightAutoSave()
         viewModelScope.launch {
+            // Cache-first delete (offline goes to the outbox); the observer drops it.
             runCatching { repository.deleteHighlight(id) }
-                .onFailure {
-                    // Resurrect the highlight: the delete never reached the
-                    // server, and pretending otherwise only lasts until the
-                    // next open anyway.
-                    _highlights.update { it + removed }
-                    scheduleHighlightAutoSave()
-                    _messages.trySend("Couldn't delete highlight — try again")
-                }
+                .onSuccess { scheduleHighlightAutoSave() }
+                .onFailure { _messages.trySend("Couldn't delete highlight — try again") }
         }
     }
 

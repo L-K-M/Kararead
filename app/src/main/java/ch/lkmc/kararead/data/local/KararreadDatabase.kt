@@ -11,8 +11,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CachedArticleEntity::class,
         ReadingDayEntity::class,
         PendingOpEntity::class,
+        CachedHighlightEntity::class,
+        HighlightOpEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class KararreadDatabase : RoomDatabase() {
@@ -20,6 +22,8 @@ abstract class KararreadDatabase : RoomDatabase() {
     abstract fun cachedArticleDao(): CachedArticleDao
     abstract fun readingStatsDao(): ReadingStatsDao
     abstract fun pendingOpDao(): PendingOpDao
+    abstract fun cachedHighlightDao(): CachedHighlightDao
+    abstract fun highlightOpDao(): HighlightOpDao
 
     companion object {
         const val NAME = "kararead.db"
@@ -58,6 +62,46 @@ abstract class KararreadDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_pending_op_bookmarkId_type " +
                         "ON pending_op (bookmarkId, type)",
+                )
+            }
+        }
+
+        /** v5 → v6: add the highlight cache and its outbox (offline highlights). */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS cached_highlight (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "bookmarkId TEXT NOT NULL, " +
+                        "startOffset INTEGER NOT NULL, " +
+                        "endOffset INTEGER NOT NULL, " +
+                        "color TEXT NOT NULL, " +
+                        "text TEXT, " +
+                        "note TEXT, " +
+                        "updatedAt INTEGER NOT NULL, " +
+                        "synced INTEGER NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_cached_highlight_bookmarkId " +
+                        "ON cached_highlight (bookmarkId)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS highlight_op (" +
+                        "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                        "highlightId TEXT NOT NULL, " +
+                        "bookmarkId TEXT NOT NULL, " +
+                        "type TEXT NOT NULL, " +
+                        "startOffset INTEGER NOT NULL, " +
+                        "endOffset INTEGER NOT NULL, " +
+                        "color TEXT NOT NULL, " +
+                        "text TEXT, " +
+                        "note TEXT, " +
+                        "createdAt INTEGER NOT NULL, " +
+                        "attempts INTEGER NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_highlight_op_highlightId " +
+                        "ON highlight_op (highlightId)",
                 )
             }
         }

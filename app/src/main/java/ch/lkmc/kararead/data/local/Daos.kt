@@ -180,3 +180,64 @@ interface ReadingStatsDao {
     @Query("DELETE FROM reading_day")
     suspend fun clear()
 }
+
+@Dao
+interface CachedHighlightDao {
+
+    @Query("SELECT * FROM cached_highlight WHERE bookmarkId = :bookmarkId ORDER BY startOffset ASC")
+    fun observeForBookmark(bookmarkId: String): Flow<List<CachedHighlightEntity>>
+
+    @Query("SELECT * FROM cached_highlight WHERE id = :id")
+    suspend fun get(id: String): CachedHighlightEntity?
+
+    @Query("SELECT * FROM cached_highlight ORDER BY updatedAt DESC")
+    suspend fun all(): List<CachedHighlightEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(highlight: CachedHighlightEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(highlights: List<CachedHighlightEntity>)
+
+    @Query("DELETE FROM cached_highlight WHERE id = :id")
+    suspend fun delete(id: String)
+
+    /** Drop the server-backed rows for a bookmark, keeping unsynced local ones. */
+    @Query("DELETE FROM cached_highlight WHERE bookmarkId = :bookmarkId AND synced = 1")
+    suspend fun deleteSyncedForBookmark(bookmarkId: String)
+
+    @Query("DELETE FROM cached_highlight")
+    suspend fun clear()
+}
+
+@Dao
+interface HighlightOpDao {
+
+    @Insert
+    suspend fun insert(op: HighlightOpEntity): Long
+
+    @Query("SELECT * FROM highlight_op ORDER BY id ASC")
+    suspend fun all(): List<HighlightOpEntity>
+
+    @Query("DELETE FROM highlight_op WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM highlight_op WHERE highlightId = :highlightId")
+    suspend fun deleteForHighlight(highlightId: String)
+
+    @Query("DELETE FROM highlight_op WHERE highlightId = :highlightId AND type = :type")
+    suspend fun deleteForHighlightAndType(highlightId: String, type: String)
+
+    /** Rewrite a queued local id to the server id once a create has synced. */
+    @Query("UPDATE highlight_op SET highlightId = :newId WHERE highlightId = :oldId")
+    suspend fun remapHighlightId(oldId: String, newId: String)
+
+    @Query("UPDATE highlight_op SET attempts = :attempts WHERE id = :id")
+    suspend fun setAttempts(id: Long, attempts: Int)
+
+    @Query("SELECT COUNT(*) FROM highlight_op")
+    fun observeCount(): Flow<Int>
+
+    @Query("DELETE FROM highlight_op")
+    suspend fun clear()
+}

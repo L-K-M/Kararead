@@ -9,10 +9,10 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
 /**
- * Replays the offline outbox — archive/favourite changes the user made while
- * disconnected — against the server. Runs only when online (a connectivity
- * constraint is set when scheduled); if any op can't be sent yet it asks
- * WorkManager to retry with backoff.
+ * Replays the offline outboxes — archive/favourite changes and highlight edits
+ * the user made while disconnected — against the server. Runs only when online
+ * (a connectivity constraint is set when scheduled); if any op can't be sent yet
+ * it asks WorkManager to retry with backoff.
  */
 @HiltWorker
 class PendingOpWorker @AssistedInject constructor(
@@ -22,11 +22,17 @@ class PendingOpWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result =
-        runCatching { repository.flushPendingOps() }
-            .fold(
-                onSuccess = { allCleared -> if (allCleared) Result.success() else Result.retry() },
-                onFailure = { Result.retry() },
-            )
+        runCatching {
+            // Flush both outboxes (archive/favourite and highlight edits). Run
+            // both even if the first leaves work behind, so one stuck op doesn't
+            // starve the other; retry unless everything cleared.
+            val opsCleared = repository.flushPendingOps()
+            val highlightsCleared = repository.flushHighlightOps()
+            opsCleared && highlightsCleared
+        }.fold(
+            onSuccess = { allCleared -> if (allCleared) Result.success() else Result.retry() },
+            onFailure = { Result.retry() },
+        )
 
     companion object {
         const val UNIQUE_NAME = "pending-op-flush"
