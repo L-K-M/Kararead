@@ -418,6 +418,14 @@ class KarakeepRepository @Inject constructor(
         cacheDao.clear()
     }
 
+    /** How many offline archive/favourite changes are still waiting to sync. */
+    fun pendingOpCount(): Flow<Int> = pendingOpDao.observeCount()
+
+    /** Ask WorkManager to replay the outbox now (manual "Retry"). */
+    fun retryPendingOps() {
+        pendingOpSync.schedule()
+    }
+
     /**
      * Wipe everything tied to the signed-in account: cached articles, the
      * offline outbox, reading progress and stats. Leaving any of it behind
