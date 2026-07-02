@@ -54,6 +54,48 @@ class ApiProviderNormalizeTest {
     }
 }
 
+class ApiProviderConfigureTest {
+
+    @Test
+    fun `an unparsable server url leaves the provider unconfigured instead of throwing`() {
+        val provider = ApiProvider()
+        // A space in the host survives normalizeBaseUrl but is not a valid
+        // http URL — this used to crash inside Retrofit's baseUrl().
+        provider.configure(
+            ch.lkmc.kararead.data.model.ConnectionSettings(
+                serverUrl = "my server.com",
+                apiKey = "ak1_test",
+            ),
+        )
+        assertTrue(!provider.isConfigured())
+    }
+
+    @Test
+    fun `a valid server url configures normally`() {
+        val provider = ApiProvider()
+        provider.configure(
+            ch.lkmc.kararead.data.model.ConnectionSettings(
+                serverUrl = "bookmarks.example.com",
+                apiKey = "ak1_test",
+            ),
+        )
+        assertTrue(provider.isConfigured())
+    }
+
+    @Test
+    fun `an invalid fallback url is dropped but the primary still works`() {
+        val provider = ApiProvider()
+        provider.configure(
+            ch.lkmc.kararead.data.model.ConnectionSettings(
+                serverUrl = "bookmarks.example.com",
+                apiKey = "ak1_test",
+                fallbackUrl = "bad fallback url",
+            ),
+        )
+        assertTrue(provider.isConfigured())
+    }
+}
+
 class FailoverInterceptorTest {
 
     private val primary = "https://main.example.com/api/v1/".toHttpUrl()

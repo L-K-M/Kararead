@@ -283,8 +283,15 @@ class KarakeepRepository @Inject constructor(
     // --- Connection test ---
 
     suspend fun testConnection(settings: ConnectionSettings): ConnectionResult {
-        apiProvider.configure(settings)
         return try {
+            // Inside the try: a URL that survives normalization but is still
+            // unparsable must surface as a Failure, not crash the Connect tap.
+            apiProvider.configure(settings)
+            if (!apiProvider.isConfigured()) {
+                return ConnectionResult.Failure(
+                    "That server URL doesn't look valid — check it and try again.",
+                )
+            }
             val user = apiProvider.api().getCurrentUser()
             ConnectionResult.Success(user.name ?: user.email ?: "Connected")
         } catch (e: retrofit2.HttpException) {

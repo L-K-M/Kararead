@@ -73,6 +73,16 @@ class ApiProvider @Inject constructor() {
         val primaryHttp = primaryBaseUrl.toHttpUrlOrNull()
         val fallbackHttp = fallbackBaseUrl?.toHttpUrlOrNull()
 
+        // A user-typed URL that survives normalization but still isn't a valid
+        // http URL (a space in the host, a stray character, …) would make
+        // Retrofit's baseUrl() throw. Treat it as "not configured" instead of
+        // crashing whoever called configure — onboarding surfaces the problem.
+        if (primaryHttp == null) {
+            state = null
+            activeBaseApiUrl = null
+            return
+        }
+
         activeBaseApiUrl = primaryBaseUrl
 
         val logging = HttpLoggingInterceptor().apply {
