@@ -100,7 +100,17 @@ data class ReaderPreferences(
     val volumeKeyPaging: Boolean = true,
 )
 
-enum class ReaderTheme { LIGHT, SEPIA, DARK, BLACK }
+enum class ReaderTheme {
+    /** Follow the system light/dark setting (LIGHT by day, DARK by night). */
+    AUTO,
+    LIGHT, SEPIA, DARK, BLACK,
+}
+
+/** The concrete theme to render: [ReaderTheme.AUTO] follows the system. */
+fun ReaderTheme.resolve(systemDark: Boolean): ReaderTheme = when (this) {
+    ReaderTheme.AUTO -> if (systemDark) ReaderTheme.DARK else ReaderTheme.LIGHT
+    else -> this
+}
 
 /**
  * Reader typeface options. The first eight are OFL-licensed faces bundled with

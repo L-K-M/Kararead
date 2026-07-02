@@ -78,6 +78,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import ch.lkmc.kararead.data.model.prettyHost
+import ch.lkmc.kararead.data.model.resolve
 import ch.lkmc.kararead.ui.components.LoadingState
 import ch.lkmc.kararead.ui.components.MessageState
 
@@ -93,7 +94,13 @@ fun ReaderScreen(
 ) {
     val scope = rememberCoroutineScope()
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val prefs by viewModel.readerPrefs.collectAsStateWithLifecycle()
+    val rawPrefs by viewModel.readerPrefs.collectAsStateWithLifecycle()
+    // AUTO resolves to a concrete theme here (and re-resolves live if the
+    // system flips while reading); everything below renders the resolved one.
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val prefs = remember(rawPrefs, systemDark) {
+        rawPrefs.copy(theme = rawPrefs.theme.resolve(systemDark))
+    }
     val speech by viewModel.speech.collectAsStateWithLifecycle()
     val voices by viewModel.voices.collectAsStateWithLifecycle()
     val ttsVoiceId by viewModel.ttsVoiceId.collectAsStateWithLifecycle()
@@ -588,7 +595,9 @@ fun ReaderScreen(
 
     if (showControls) {
         ReaderControlsSheet(
-            prefs = prefs,
+            // The sheet shows the stored preference (so Auto stays selected),
+            // not the resolved theme.
+            prefs = rawPrefs,
             onDismiss = { showControls = false },
             onTheme = viewModel::setTheme,
             onFont = viewModel::setFont,
