@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -52,12 +53,15 @@ class HighlightsViewModel @Inject constructor(
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
 
-    init {
-        refresh()
+    private companion object {
+        const val MAX_META_CONCURRENCY = 6
     }
 
-    fun refresh() {
-        _state.value = _state.value.copy(loading = true, error = null)
+    fun refresh(userInitiated: Boolean = true) {
+        // A quiet (lifecycle-driven) refresh shouldn't flash the full-screen
+        // spinner over content that's already showing.
+        val showSpinner = userInitiated || _state.value.groups.isEmpty()
+        _state.value = _state.value.copy(loading = showSpinner, error = null)
         viewModelScope.launch {
             runCatching { loadGroups() }
                 .onSuccess { groups -> _state.value = HighlightsUiState(loading = false, groups = groups) }
@@ -74,8 +78,15 @@ class HighlightsViewModel @Inject constructor(
         val all = repository.getAllHighlights()
         // Preserve the server's order (newest first) when grouping by article.
         val byBookmark = all.groupBy { it.bookmarkId }
+        // Bound the per-article metadata fetches: an unbounded async per
+        // bookmark is an N+1 that hammers small self-hosted servers.
+        val gate = kotlinx.coroutines.sync.Semaphore(MAX_META_CONCURRENCY)
         val metas: Map<String, Bookmark?> = byBookmark.keys
-            .map { id -> async { id to runCatching { repository.getBookmarkMeta(id) }.getOrNull() } }
+            .map { id ->
+                async {
+                    gate.withPermit { id to runCatching { repository.getBookmarkMeta(id) }.getOrNull() }
+                }
+            }
             .awaitAll()
             .toMap()
         byBookmark.map { (bookmarkId, highlights) ->

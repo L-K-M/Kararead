@@ -11,13 +11,16 @@ fun highlightsToMarkdown(title: String, url: String?, highlights: List<Highlight
         .sortedBy { it.startOffset }
         .mapNotNull { h ->
             val text = h.text?.trim().orEmpty()
-            if (text.isEmpty()) {
-                null
-            } else {
-                buildString {
+            val note = h.note?.trim().orEmpty()
+            when {
+                text.isNotEmpty() -> buildString {
                     append("> ").append(text.replace("\n", "\n> "))
-                    h.note?.trim()?.takeIf { it.isNotEmpty() }?.let { append("\n\n").append(it) }
+                    if (note.isNotEmpty()) append("\n\n").append(note)
                 }
+                // Other Karakeep clients can create text-less highlights that
+                // carry a note; dropping them lost the note from every export.
+                note.isNotEmpty() -> note
+                else -> null
             }
         }
 
@@ -46,8 +49,8 @@ data class HighlightCollection(
  */
 fun highlightsToMarkdown(collections: List<HighlightCollection>): String =
     collections
+        // Keep only sections with any content (text or a note) to render.
+        .filter { c -> c.highlights.any { !it.text.isNullOrBlank() || !it.note.isNullOrBlank() } }
         .map { highlightsToMarkdown(it.title, it.url, it.highlights).trimEnd() }
-        // Keep only sections that actually rendered a quote (skip title-only ones).
-        .filter { it.contains("> ") }
         .joinToString("\n\n---\n\n")
         .let { if (it.isEmpty()) it else it + "\n" }

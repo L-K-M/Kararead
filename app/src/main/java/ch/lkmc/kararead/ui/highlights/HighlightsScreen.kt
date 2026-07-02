@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import ch.lkmc.kararead.ui.components.LoadingState
 import ch.lkmc.kararead.ui.components.MessageState
 import ch.lkmc.kararead.ui.components.shareText
@@ -47,6 +48,16 @@ fun HighlightsScreen(
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.messages.collect {
             android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // (Re)load whenever the screen comes back to the foreground — highlights
+    // edited in the reader on top of this entry used to leave the list (and
+    // its exports) stale until it was reopened.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            viewModel.refresh(userInitiated = false)
         }
     }
 
