@@ -1,6 +1,5 @@
 package ch.lkmc.kararead.ui.library
 
-import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -29,7 +28,8 @@ class ListBookmarksViewModel @Inject constructor(
 ) : ViewModel() {
 
     val listId: String = savedStateHandle.get<String>("listId").orEmpty()
-    val listName: String = Uri.decode(savedStateHandle.get<String>("listName").orEmpty())
+    // The SavedStateHandle value is already URI-decoded by navigation.
+    val listName: String = savedStateHandle.get<String>("listName").orEmpty()
 
     private val hiddenIds = MutableStateFlow<Set<String>>(emptySet())
 
