@@ -39,6 +39,7 @@ import ch.lkmc.kararead.ui.components.shareText
 @Composable
 fun HighlightsScreen(
     onOpenReader: (String) -> Unit,
+    onOpenHighlight: (bookmarkId: String, highlightId: String) -> Unit,
     onBack: () -> Unit,
     viewModel: HighlightsViewModel = hiltViewModel(),
 ) {
@@ -120,7 +121,9 @@ fun HighlightsScreen(
                             HighlightRow(
                                 text = hl.text,
                                 note = hl.note,
-                                onClick = { onOpenReader(group.bookmarkId) },
+                                // Land on the quote itself, not the saved scroll
+                                // position (which means hunting on long articles).
+                                onClick = { onOpenHighlight(group.bookmarkId, hl.id) },
                             )
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),

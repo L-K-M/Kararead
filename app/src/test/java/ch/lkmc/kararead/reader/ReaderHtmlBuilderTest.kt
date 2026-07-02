@@ -142,6 +142,13 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
+    fun `reader script can jump to a saved highlight`() {
+        val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
+        assertTrue(out.contains("krScrollToHighlight"))
+        assertTrue(out.contains("mark.kr-hl[data-id="))
+    }
+
+    @Test
     fun `element ids survive sanitization so footnote links can resolve`() {
         val html = "<p>See<a href=\"#fn1\">[1]</a></p><p id=\"fn1\">the footnote</p>"
         // In production the server origin is the base URI; fragment hrefs get

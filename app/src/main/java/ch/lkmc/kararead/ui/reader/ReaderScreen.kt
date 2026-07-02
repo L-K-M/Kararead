@@ -217,6 +217,23 @@ fun ReaderScreen(
         }
     }
 
+    // H5: opened from the Highlights screen with a target highlight — once the
+    // article and its marks have rendered, jump to the quote instead of the
+    // saved scroll position. rememberSaveable so a rotation doesn't re-jump and
+    // yank the reader off the spot they've since scrolled to.
+    val jumpHighlightId = viewModel.initialHighlightId
+    var didJumpToHighlight by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(highlights, jumpHighlightId, didJumpToHighlight) {
+        if (!didJumpToHighlight && jumpHighlightId != null &&
+            highlights.any { it.id == jumpHighlightId }
+        ) {
+            // Let the document render, marks apply and any restore settle first.
+            kotlinx.coroutines.delay(600)
+            pager.scrollToHighlight(jumpHighlightId)
+            didJumpToHighlight = true
+        }
+    }
+
     // While the find bar is open, the system back gesture closes it (and clears
     // the matches) rather than leaving the article.
     androidx.activity.compose.BackHandler(enabled = showFind) {

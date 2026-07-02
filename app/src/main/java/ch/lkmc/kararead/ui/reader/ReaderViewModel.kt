@@ -74,6 +74,9 @@ class ReaderViewModel @Inject constructor(
 
     private val bookmarkId: String = savedStateHandle.get<String>("bookmarkId").orEmpty()
 
+    /** A highlight to scroll to on open (from the Highlights screen), or null. */
+    val initialHighlightId: String? = savedStateHandle.get<String>("highlightId")
+
     private val _highlights = MutableStateFlow<List<Highlight>>(emptyList())
     val highlights: StateFlow<List<Highlight>> = _highlights
 

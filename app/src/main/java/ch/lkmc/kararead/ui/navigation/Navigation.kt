@@ -47,10 +47,12 @@ object Routes {
     const val STATS = "stats"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
-    const val READER = "reader/{bookmarkId}"
+    const val READER = "reader/{bookmarkId}?highlight={highlightId}"
     const val LIST_DETAIL = "list/{listId}/{listName}"
 
-    fun reader(bookmarkId: String) = "reader/$bookmarkId"
+    /** Reader route; pass [highlightId] to jump straight to a saved highlight. */
+    fun reader(bookmarkId: String, highlightId: String? = null) =
+        "reader/$bookmarkId" + (highlightId?.let { "?highlight=${Uri.encode(it)}" } ?: "")
     fun listDetail(listId: String, listName: String) =
         "list/$listId/${Uri.encode(listName)}"
 }
@@ -163,6 +165,11 @@ fun KararreadNavHost(startDestination: String) {
                     onOpenReader = {
                         navController.navigate(Routes.reader(it)) { launchSingleTop = true }
                     },
+                    onOpenHighlight = { bookmarkId, highlightId ->
+                        navController.navigate(Routes.reader(bookmarkId, highlightId)) {
+                            launchSingleTop = true
+                        }
+                    },
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -186,6 +193,13 @@ fun KararreadNavHost(startDestination: String) {
             }
             composable(
                 route = Routes.READER,
+                arguments = listOf(
+                    androidx.navigation.navArgument("highlightId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
                 enterTransition = { slideIn() },
                 exitTransition = { slideOut() },
             ) {

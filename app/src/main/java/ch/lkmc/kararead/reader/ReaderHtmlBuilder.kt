@@ -686,6 +686,14 @@ body {
       }
     }
   };
+  // Jump to a saved highlight's mark (from the Highlights screen). Stops any
+  // in-progress restore so it doesn't fight the jump.
+  window.krScrollToHighlight = function(id){
+    if (window.krStopSticky) krStopSticky();
+    var el = document.querySelector('mark.kr-hl[data-id="' + id + '"]');
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return !!el;
+  };
     """.trimIndent()
 
     private fun escape(s: String): String = s
