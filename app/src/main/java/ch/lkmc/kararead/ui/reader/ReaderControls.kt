@@ -174,9 +174,9 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun ThemeSwatch(theme: ReaderTheme, selected: Boolean, onClick: () -> Unit) {
-    // The Auto swatch previews whatever it would resolve to right now.
+    // The Auto and Sunset swatches preview whatever they resolve to right now.
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val palette = ReaderHtmlBuilder.paletteFor(theme.resolve(systemDark))
+    val palette = ReaderHtmlBuilder.paletteFor(theme.resolve(systemDark, nowHourOfDay()))
     val bg = runCatching { Color(android.graphics.Color.parseColor(palette.background)) }
         .getOrDefault(Color.White)
     val fg = runCatching { Color(android.graphics.Color.parseColor(palette.text)) }
@@ -257,7 +257,12 @@ private fun themeLabel(theme: ReaderTheme) = when (theme) {
     ReaderTheme.SEPIA -> "Sepia"
     ReaderTheme.DARK -> "Dark"
     ReaderTheme.BLACK -> "Black"
+    ReaderTheme.SUNSET -> "Sunset"
 }
+
+/** Local hour of day (0..23) so the SUNSET swatch previews the live theme. */
+private fun nowHourOfDay(): Int =
+    java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
 
 /** A random bundled reading face (never the current one) for the shuffle dice. */
 private fun randomReadingFont(current: ReaderFont): ReaderFont {
@@ -306,7 +311,7 @@ private fun rememberReaderFontFamilies(): Map<ReaderFont, FontFamily> {
 @Composable
 private fun PreviewCard(prefs: ReaderPreferences, fontFamilies: Map<ReaderFont, FontFamily>) {
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val palette = ReaderHtmlBuilder.paletteFor(prefs.theme.resolve(systemDark))
+    val palette = ReaderHtmlBuilder.paletteFor(prefs.theme.resolve(systemDark, nowHourOfDay()))
     fun parse(hex: String, fallback: Color) =
         runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(fallback)
     val bg = parse(palette.background, Color.White)
