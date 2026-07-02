@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -96,10 +97,15 @@ fun MessageStackHost(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         state.messages.forEach { message ->
-            MessageCard(
-                message = message,
-                onRemove = { state.dismiss(message.id) },
-            )
+            // Keyed, as the id's doc comment always promised: positional slots
+            // made every younger card flicker and restart its auto-dismiss
+            // timer whenever an older one left the stack.
+            key(message.id) {
+                MessageCard(
+                    message = message,
+                    onRemove = { state.dismiss(message.id) },
+                )
+            }
         }
     }
 }

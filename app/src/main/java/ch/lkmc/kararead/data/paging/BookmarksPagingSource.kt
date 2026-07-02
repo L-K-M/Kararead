@@ -24,6 +24,10 @@ class BookmarksPagingSource(
                 prevKey = null, // forward-only cursor pagination
                 nextKey = response.nextCursor,
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Paging cancels loads on invalidation/tab switches; swallowing the
+            // cancellation and reporting an Error breaks its pipeline contract.
+            throw e
         } catch (e: Exception) {
             LoadResult.Error(e)
         }
