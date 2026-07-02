@@ -40,6 +40,7 @@ class ReaderPager {
     internal var pageBy: ((Int) -> Unit)? = null
     internal var scrollToFraction: ((Float) -> Unit)? = null
     internal var scrollToHighlight: ((String) -> Unit)? = null
+    internal var scrollToHeading: ((Int) -> Unit)? = null
     fun page(direction: Int) {
         pageBy?.invoke(direction)
     }
@@ -52,6 +53,11 @@ class ReaderPager {
     /** Scroll a saved highlight's mark into view (jump-to-highlight). */
     fun scrollToHighlight(id: String) {
         scrollToHighlight?.invoke(id)
+    }
+
+    /** Scroll the Nth article heading into view (table of contents). */
+    fun scrollToHeading(index: Int) {
+        scrollToHeading?.invoke(index)
     }
 }
 
@@ -310,6 +316,9 @@ fun ReaderWebView(
                     val arg = org.json.JSONObject.quote(id)
                     evaluateJavascript("window.krScrollToHighlight && window.krScrollToHighlight($arg);", null)
                 }
+                pager.scrollToHeading = { index ->
+                    evaluateJavascript("window.krScrollToHeading && window.krScrollToHeading($index);", null)
+                }
 
                 // Native in-page search. findAllAsync highlights every match and
                 // selects the first; findNext walks between them. Results (active
@@ -400,6 +409,7 @@ fun ReaderWebView(
             pager.pageBy = null
             pager.scrollToFraction = null
             pager.scrollToHighlight = null
+            pager.scrollToHeading = null
             finder.findAll = null
             finder.findNextMatch = null
             finder.clearMatches = null

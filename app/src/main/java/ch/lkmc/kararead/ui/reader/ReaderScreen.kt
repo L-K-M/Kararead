@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -112,6 +113,7 @@ fun ReaderScreen(
     val ttsVoiceId by viewModel.ttsVoiceId.collectAsStateWithLifecycle()
     val ttsRate by viewModel.ttsRate.collectAsStateWithLifecycle()
     val highlights by viewModel.highlights.collectAsStateWithLifecycle()
+    val headings by viewModel.headings.collectAsStateWithLifecycle()
     val highlightsJson by viewModel.highlightsJson.collectAsStateWithLifecycle()
     val nextUp by viewModel.nextUp.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -121,6 +123,7 @@ fun ReaderScreen(
     var showControls by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
     var showHighlights by remember { mutableStateOf(false) }
+    var showToc by remember { mutableStateOf(false) }
     var pendingHighlightId by remember { mutableStateOf<String?>(null) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var showFind by remember { mutableStateOf(false) }
@@ -438,6 +441,18 @@ fun ReaderScreen(
                                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                                 onClick = { overflowOpen = false; showFind = true },
                             )
+                            if (headings.size >= 2) {
+                                DropdownMenuItem(
+                                    text = { Text("Contents") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.List,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onClick = { overflowOpen = false; showToc = true },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(if (state.archived) "Mark as unread" else "Mark as read") },
                                 leadingIcon = {
@@ -694,6 +709,18 @@ fun ReaderScreen(
         )
     }
 
+    if (showToc) {
+        TocSheet(
+            headings = headings,
+            onDismiss = { showToc = false },
+            onPick = { index ->
+                showToc = false
+                chromeVisible = false
+                pager.scrollToHeading(index)
+            },
+        )
+    }
+
     pendingHighlightId?.let { id ->
         val hl = viewModel.highlight(id)
         if (hl == null) {
@@ -754,6 +781,56 @@ private fun HighlightNoteDialog(
             ) { Text("Delete") }
         },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TocSheet(
+    headings: List<ch.lkmc.kararead.reader.ReaderHeading>,
+    onDismiss: () -> Unit,
+    onPick: (index: Int) -> Unit,
+) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text("Contents", style = MaterialTheme.typography.titleLarge)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
+            // The smallest heading level present sets the base indent, so a
+            // document that only uses h2/h3 isn't pushed needlessly far right.
+            val minLevel = headings.minOfOrNull { it.level } ?: 1
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                items(headings, key = { it.index }) { heading ->
+                    Text(
+                        heading.text,
+                        style = if (heading.level <= minLevel) {
+                            MaterialTheme.typography.bodyLarge
+                        } else {
+                            MaterialTheme.typography.bodyMedium
+                        },
+                        color = if (heading.level <= minLevel) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(heading.index) }
+                            .padding(
+                                start = (12 * (heading.level - minLevel)).dp,
+                                top = 10.dp,
+                                bottom = 10.dp,
+                            ),
+                    )
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -80,6 +80,10 @@ class ReaderViewModel @Inject constructor(
     private val _highlights = MutableStateFlow<List<Highlight>>(emptyList())
     val highlights: StateFlow<List<Highlight>> = _highlights
 
+    // The article's headings, for the table of contents (parsed off-thread on load).
+    private val _headings = MutableStateFlow<List<ch.lkmc.kararead.reader.ReaderHeading>>(emptyList())
+    val headings: StateFlow<List<ch.lkmc.kararead.reader.ReaderHeading>> = _headings
+
     // The next unread article we'd open from the end-of-article "Done · Next"
     // button, fetched once on load so the button can name it.
     private val _nextUp = MutableStateFlow<Bookmark?>(null)
@@ -181,6 +185,9 @@ class ReaderViewModel @Inject constructor(
                         ch.lkmc.kararead.reader.ReaderHtmlBuilder.sanitizeBody(
                             article.htmlContent, apiProvider.serverOrigin,
                         )
+                    }
+                    _headings.value = withContext(Dispatchers.Default) {
+                        ch.lkmc.kararead.reader.ReaderHtmlBuilder.tableOfContents(sanitizedBody)
                     }
                     _state.update {
                         it.copy(

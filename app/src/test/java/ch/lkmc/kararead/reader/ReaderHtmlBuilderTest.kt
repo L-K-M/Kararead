@@ -7,6 +7,7 @@ import ch.lkmc.kararead.data.model.ReaderFont
 import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.data.model.ReaderTheme
 import ch.lkmc.kararead.data.model.resolve
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -146,6 +147,37 @@ class ReaderHtmlBuilderTest {
         val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
         assertTrue(out.contains("krScrollToHighlight"))
         assertTrue(out.contains("mark.kr-hl[data-id="))
+    }
+
+    @Test
+    fun `table of contents lists headings with document-order indices`() {
+        val body = "<h2>One</h2><p>a</p><h3>One-a</h3><p>b</p><h2>Two</h2>"
+        val toc = ReaderHtmlBuilder.tableOfContents(body)
+        assertEquals(3, toc.size)
+        assertEquals("One", toc[0].text)
+        assertEquals(2, toc[0].level)
+        assertEquals(0, toc[0].index)
+        assertEquals(3, toc[1].level) // h3
+        assertEquals(1, toc[1].index)
+        assertEquals("Two", toc[2].text)
+        assertEquals(2, toc[2].index)
+    }
+
+    @Test
+    fun `table of contents skips empty headings but keeps selector indices`() {
+        // The empty h2 still occupies index 1 in the DOM's querySelectorAll, so
+        // the following heading must report index 2 to line up with the WebView.
+        val body = "<h2>First</h2><h2></h2><h2>Third</h2>"
+        val toc = ReaderHtmlBuilder.tableOfContents(body)
+        assertEquals(2, toc.size)
+        assertEquals(0, toc[0].index)
+        assertEquals(2, toc[1].index)
+    }
+
+    @Test
+    fun `empty body has no table of contents`() {
+        assertTrue(ReaderHtmlBuilder.tableOfContents(null).isEmpty())
+        assertTrue(ReaderHtmlBuilder.tableOfContents("<p>no headings</p>").isEmpty())
     }
 
     @Test
