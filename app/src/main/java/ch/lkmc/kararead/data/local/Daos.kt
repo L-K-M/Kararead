@@ -140,6 +140,14 @@ interface PendingOpDao {
     @Query("DELETE FROM pending_op WHERE id = :id")
     suspend fun delete(id: Long)
 
+    /** The queued op for one bookmark+field, if any. */
+    @Query("SELECT * FROM pending_op WHERE bookmarkId = :bookmarkId AND type = :type")
+    suspend fun getFor(bookmarkId: String, type: String): PendingOpEntity?
+
+    /** Drop the queued op for one bookmark+field (it was superseded online). */
+    @Query("DELETE FROM pending_op WHERE bookmarkId = :bookmarkId AND type = :type")
+    suspend fun deleteFor(bookmarkId: String, type: String)
+
     @Query("UPDATE pending_op SET attempts = :attempts WHERE id = :id")
     suspend fun setAttempts(id: Long, attempts: Int)
 }

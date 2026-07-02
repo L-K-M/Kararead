@@ -33,10 +33,12 @@ import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.work.PendingOpSync
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.util.computeReadingStats
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -47,9 +49,14 @@ sealed interface ConnectionResult {
     data class Failure(val message: String) : ConnectionResult
 }
 
-/** Drop a queued offline op after this many failed online replays, so a change
- *  the server keeps rejecting (e.g. a since-deleted bookmark) can't loop forever. */
-private const val MAX_SYNC_ATTEMPTS = 5
+/**
+ * Drop a queued offline op after this many replays the server answered with a
+ * 5xx, so a change it keeps erroring on can't loop forever. Definitive 4xx
+ * rejections are dropped immediately; transport errors (offline, unreachable
+ * self-hosted box) never count — the whole point of the outbox is to survive
+ * them, however long they last.
+ */
+private const val MAX_SYNC_ATTEMPTS = 20
 
 @Singleton
 class KarakeepRepository @Inject constructor(
@@ -133,39 +140,58 @@ class KarakeepRepository @Inject constructor(
      */
     suspend fun refreshReadState(id: String): Pair<Boolean, Boolean>? = runCatching {
         val bm = api().getBookmark(id, includeContent = false).toDomain(assetResolver)
+        // A queued offline change is newer than whatever the server still says;
+        // keep the user's value until the outbox has flushed it.
+        val archived = pendingOpDao.getFor(id, PendingOpEntity.TYPE_ARCHIVED)?.value ?: bm.archived
+        val favourited =
+            pendingOpDao.getFor(id, PendingOpEntity.TYPE_FAVOURITED)?.value ?: bm.favourited
         cacheDao.get(id)?.let {
-            cacheDao.upsert(it.copy(archived = bm.archived, favourited = bm.favourited))
+            cacheDao.upsert(it.copy(archived = archived, favourited = favourited))
         }
-        bm.archived to bm.favourited
+        archived to favourited
     }.getOrNull()
 
     // --- Mutations ---
 
-    suspend fun setArchived(id: String, archived: Boolean) {
-        // Optimistically reflect the change in the cache so offline/cached lists
-        // update at once; the live listing will agree once it (re)loads.
-        cacheDao.get(id)?.let { runCatching { cacheDao.upsert(it.copy(archived = archived)) } }
-        val synced = runCatching {
-            api().updateBookmark(id, UpdateBookmarkRequest(archived = archived))
-        }.isSuccess
-        if (synced) {
-            // Uncache on read: once an article is archived (done reading) it leaves
-            // the offline queue, so drop its cached copy to free space.
-            if (archived) runCatching { cacheDao.delete(id) }
-        } else {
-            // Offline (or transient): queue the change to replay when back online.
-            queueOp(id, PendingOpEntity.TYPE_ARCHIVED, archived)
+    // Mutations run under NonCancellable: they're launched from ViewModel scopes
+    // that die the moment the user navigates away, and a cancelled PATCH would
+    // otherwise be mis-read as "offline" — after which even the queueOp fallback
+    // can't run on the dead coroutine, silently losing the tap.
+    suspend fun setArchived(id: String, archived: Boolean): Unit =
+        withContext(NonCancellable) {
+            // Optimistically reflect the change in the cache so offline/cached lists
+            // update at once; the live listing will agree once it (re)loads.
+            cacheDao.get(id)?.let { runCatching { cacheDao.upsert(it.copy(archived = archived)) } }
+            val synced = runCatching {
+                api().updateBookmark(id, UpdateBookmarkRequest(archived = archived))
+            }.isSuccess
+            if (synced) {
+                // The server now has the user's latest word on this field; a
+                // still-queued offline op is stale and must not replay later
+                // (it would silently revert this change).
+                runCatching { pendingOpDao.deleteFor(id, PendingOpEntity.TYPE_ARCHIVED) }
+                // Uncache on read: once an article is archived (done reading) it leaves
+                // the offline queue, so drop its cached copy to free space.
+                if (archived) runCatching { cacheDao.delete(id) }
+            } else {
+                // Offline (or transient): queue the change to replay when back online.
+                queueOp(id, PendingOpEntity.TYPE_ARCHIVED, archived)
+            }
+            if (archived) _archivedIds.tryEmit(id)
         }
-        if (archived) _archivedIds.tryEmit(id)
-    }
 
-    suspend fun setFavourited(id: String, favourited: Boolean) {
-        cacheDao.get(id)?.let { runCatching { cacheDao.upsert(it.copy(favourited = favourited)) } }
-        val synced = runCatching {
-            api().updateBookmark(id, UpdateBookmarkRequest(favourited = favourited))
-        }.isSuccess
-        if (!synced) queueOp(id, PendingOpEntity.TYPE_FAVOURITED, favourited)
-    }
+    suspend fun setFavourited(id: String, favourited: Boolean): Unit =
+        withContext(NonCancellable) {
+            cacheDao.get(id)?.let { runCatching { cacheDao.upsert(it.copy(favourited = favourited)) } }
+            val synced = runCatching {
+                api().updateBookmark(id, UpdateBookmarkRequest(favourited = favourited))
+            }.isSuccess
+            if (synced) {
+                runCatching { pendingOpDao.deleteFor(id, PendingOpEntity.TYPE_FAVOURITED) }
+            } else {
+                queueOp(id, PendingOpEntity.TYPE_FAVOURITED, favourited)
+            }
+        }
 
     /** Add (or overwrite) an outbox entry and ask for a flush when online. */
     private suspend fun queueOp(id: String, type: String, value: Boolean) {
@@ -194,19 +220,39 @@ class KarakeepRepository @Inject constructor(
                 PendingOpEntity.TYPE_FAVOURITED -> UpdateBookmarkRequest(favourited = op.value)
                 else -> { pendingOpDao.delete(op.id); continue }
             }
-            val synced = runCatching { api().updateBookmark(op.bookmarkId, request) }.isSuccess
-            if (synced) {
-                pendingOpDao.delete(op.id)
-                if (op.type == PendingOpEntity.TYPE_ARCHIVED && op.value) {
-                    runCatching { cacheDao.delete(op.bookmarkId) }
-                    _archivedIds.tryEmit(op.bookmarkId)
-                }
-            } else {
-                val attempts = op.attempts + 1
-                if (attempts >= MAX_SYNC_ATTEMPTS) {
+            val result = runCatching { api().updateBookmark(op.bookmarkId, request) }
+            val error = result.exceptionOrNull()
+            when {
+                result.isSuccess -> {
                     pendingOpDao.delete(op.id)
-                } else {
-                    pendingOpDao.setAttempts(op.id, attempts)
+                    if (op.type == PendingOpEntity.TYPE_ARCHIVED && op.value) {
+                        runCatching { cacheDao.delete(op.bookmarkId) }
+                        _archivedIds.tryEmit(op.bookmarkId)
+                    }
+                }
+                error is kotlinx.coroutines.CancellationException -> throw error
+                error is retrofit2.HttpException && error.code() in 400..499 -> {
+                    // The server definitively rejected the change (bookmark
+                    // deleted, bad request) — retrying can never succeed.
+                    pendingOpDao.delete(op.id)
+                }
+                error is retrofit2.HttpException -> {
+                    // Server-side error: retry, but cap so a permanently
+                    // erroring op can't loop forever.
+                    val attempts = op.attempts + 1
+                    if (attempts >= MAX_SYNC_ATTEMPTS) {
+                        pendingOpDao.delete(op.id)
+                    } else {
+                        pendingOpDao.setAttempts(op.id, attempts)
+                        allCleared = false
+                    }
+                }
+                else -> {
+                    // Transport error — offline, or the (self-hosted) server is
+                    // unreachable even though the phone has internet. This can
+                    // last hours; the op must survive it without burning
+                    // attempts, or a train ride silently discards the user's
+                    // archives.
                     allCleared = false
                 }
             }
