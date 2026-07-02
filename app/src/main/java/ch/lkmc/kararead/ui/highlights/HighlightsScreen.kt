@@ -2,6 +2,7 @@ package ch.lkmc.kararead.ui.highlights
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,6 +26,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,9 +35,15 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import ch.lkmc.kararead.data.model.Highlight
 import ch.lkmc.kararead.ui.components.LoadingState
 import ch.lkmc.kararead.ui.components.MessageState
+import ch.lkmc.kararead.ui.components.shareImage
 import ch.lkmc.kararead.ui.components.shareText
+import ch.lkmc.kararead.util.QuoteCard
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +55,24 @@ fun HighlightsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Render a highlight into a shareable quote card off the main thread, then
+    // hand the image to the system share sheet.
+    val shareAsCard: (HighlightGroup, Highlight) -> Unit = { group, hl ->
+        scope.launch {
+            val uri = withContext(Dispatchers.IO) {
+                QuoteCard.render(context, hl.id, hl.text, group.title, group.url)
+            }
+            if (uri != null) {
+                shareImage(context, uri, group.title)
+            } else {
+                android.widget.Toast
+                    .makeText(context, "Nothing to quote", android.widget.Toast.LENGTH_SHORT)
+                    .show()
+            }
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.messages.collect {
@@ -124,6 +152,7 @@ fun HighlightsScreen(
                                 // Land on the quote itself, not the saved scroll
                                 // position (which means hunting on long articles).
                                 onClick = { onOpenHighlight(group.bookmarkId, hl.id) },
+                                onShareCard = { shareAsCard(group, hl) },
                             )
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
@@ -159,23 +188,40 @@ private fun ArticleHeader(title: String, count: Int, onClick: () -> Unit) {
 }
 
 @Composable
-private fun HighlightRow(text: String?, note: String?, onClick: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(start = 24.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
+private fun HighlightRow(
+    text: String?,
+    note: String?,
+    onClick: () -> Unit,
+    onShareCard: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text ?: "(highlight)",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        note?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(4.dp))
+        Column(
+            Modifier
+                .weight(1f)
+                .clickable(onClick = onClick)
+                .padding(start = 24.dp, top = 8.dp, bottom = 10.dp, end = 4.dp),
+        ) {
             Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
+                text ?: "(highlight)",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            note?.takeIf { it.isNotBlank() }?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        IconButton(onClick = onShareCard) {
+            Icon(
+                Icons.Filled.Image,
+                contentDescription = "Share as image",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
