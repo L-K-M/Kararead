@@ -61,7 +61,11 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
                 .padding(horizontal = 16.dp),
         ) {
             Spacer(Modifier.height(8.dp))
-            StreakHero(days = state.stats.currentStreakDays, longest = state.stats.longestStreakDays)
+            StreakHero(
+                days = state.stats.currentStreakDays,
+                longest = state.stats.longestStreakDays,
+                forgiven = state.stats.streakForgivenRecently,
+            )
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatTile("Today", "${state.stats.todayMinutes}", "min", Modifier.weight(1f))
@@ -82,7 +86,7 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun StreakHero(days: Int, longest: Int) {
+private fun StreakHero(days: Int, longest: Int, forgiven: Boolean = false) {
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -120,6 +124,16 @@ private fun StreakHero(days: Int, longest: Int) {
                     "Best: $longest days",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+            }
+            if (forgiven && days >= 1) {
+                // A quiet day slipped by, but the streak held — say so kindly so
+                // the missed day doesn't feel like a glitch.
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "🌿 A quiet day, forgiven — your streak lives on",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
                 )
             }
         }

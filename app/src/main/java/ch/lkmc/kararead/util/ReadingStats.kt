@@ -1,6 +1,7 @@
 package ch.lkmc.kararead.util
 
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 /** A snapshot of the reader's habit stats, surfaced as gentle encouragement. */
 data class ReadingStats(
@@ -8,12 +9,26 @@ data class ReadingStats(
     val longestStreakDays: Int = 0,
     val todayMinutes: Int = 0,
     val daysReadTotal: Int = 0,
+    /**
+     * True when the live streak is currently being kept alive by a forgiven
+     * quiet day in the past week — so the UI can gently acknowledge it rather
+     * than let the user wonder why a missed day didn't reset the count.
+     */
+    val streakForgivenRecently: Boolean = false,
 ) {
     val hasAny: Boolean get() = daysReadTotal > 0 || todayMinutes > 0
 }
 
 /** A day counts toward a streak once at least this much was read. */
 const val STREAK_MIN_SECONDS = 30L
+
+/**
+ * How often the streak forgives a "quiet day". A calm app doesn't punish one
+ * missed day: a single non-reading day is bridged without breaking the streak,
+ * but no more than one forgiven day per this many days — so a whole quiet week
+ * still ends it. (D4-adjacent "streak forgiveness token".)
+ */
+const val STREAK_FORGIVE_EVERY_DAYS = 7L
 
 /** A day's reading minutes for the stats chart. */
 data class DayMinutes(
@@ -92,7 +107,8 @@ fun minutesInLastDays(
  *
  * The current streak counts consecutive qualifying days ending today — or
  * yesterday, so a streak isn't considered broken until a whole day passes
- * without reading.
+ * without reading. A single quiet day is forgiven (see [streakEndingAt] and
+ * [STREAK_FORGIVE_EVERY_DAYS]) so one missed day doesn't reset the count.
  */
 fun computeReadingStats(
     secondsByDate: Map<String, Long>,
@@ -104,36 +120,67 @@ fun computeReadingStats(
         .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
         .toSet()
 
-    // Current streak: walk back from today (grace: allow today itself missing).
-    var current = 0
-    run {
-        var day = if (today in qualifying) today else today.minusDays(1)
-        if (day in qualifying) {
-            while (day in qualifying) {
-                current++
-                day = day.minusDays(1)
-            }
-        }
-    }
+    // Current streak: walk back from today (grace: today may still be missing
+    // because the day isn't over), forgiving up to one quiet day per week.
+    val anchor = if (today in qualifying) today else today.minusDays(1)
+    val currentWalk = streakEndingAt(anchor, qualifying)
 
-    // Longest streak across all recorded days.
-    var longest = 0
-    for (day in qualifying) {
-        if (day.minusDays(1) in qualifying) continue // not a run start
-        var run = 0
-        var d = day
-        while (d in qualifying) {
-            run++
-            d = d.plusDays(1)
-        }
-        if (run > longest) longest = run
-    }
+    // Longest streak across all recorded days, using the same forgiving walk.
+    // Every qualifying day is a candidate end; the maximum is reached at each
+    // run's true end, so scanning them all finds the longest.
+    val longest = qualifying.maxOfOrNull { streakEndingAt(it, qualifying).count } ?: 0
+
+    // A live streak that leans on a quiet day forgiven within the past week.
+    val forgivenRecently = currentWalk.count > 0 && currentWalk.latestForgiven?.let {
+        ChronoUnit.DAYS.between(it, today) <= STREAK_FORGIVE_EVERY_DAYS
+    } == true
 
     val todaySeconds = secondsByDate[today.toString()] ?: 0L
     return ReadingStats(
-        currentStreakDays = current,
+        currentStreakDays = currentWalk.count,
         longestStreakDays = longest,
         todayMinutes = (todaySeconds / 60).toInt(),
         daysReadTotal = qualifying.size,
+        streakForgivenRecently = forgivenRecently,
     )
+}
+
+/** Result of a backward streak walk: reading days counted, and the most recent quiet day forgiven. */
+private data class StreakWalk(val count: Int, val latestForgiven: LocalDate?)
+
+/**
+ * The length of the reading streak ending on [end], walking backward through
+ * [qualifying] days and forgiving at most one quiet (non-reading) day per
+ * rolling [STREAK_FORGIVE_EVERY_DAYS]-day window. Only actual reading days are
+ * counted — a forgiven day keeps the streak alive but doesn't inflate it, and
+ * two quiet days closer together than the window still end the streak.
+ */
+private fun streakEndingAt(end: LocalDate, qualifying: Set<LocalDate>): StreakWalk {
+    var count = 0
+    var lastForgiven: LocalDate? = null
+    var bridgedForgiven: LocalDate? = null // most-recent quiet day that keeps the streak alive
+    var day = end
+    while (true) {
+        when {
+            day in qualifying -> {
+                count++
+                day = day.minusDays(1)
+            }
+            // Forgive a quiet day only if the last one we forgave is at least a
+            // week further along — at most one per window (walking backward,
+            // lastForgiven is always the later date).
+            lastForgiven == null ||
+                ChronoUnit.DAYS.between(day, lastForgiven) >= STREAK_FORGIVE_EVERY_DAYS -> {
+                // The quiet day only *matters* if reading resumes just behind it;
+                // a forgiven day past the streak's last read is speculative and
+                // never actually held anything together.
+                if (bridgedForgiven == null && day.minusDays(1) in qualifying) {
+                    bridgedForgiven = day
+                }
+                lastForgiven = day
+                day = day.minusDays(1)
+            }
+            else -> return StreakWalk(count, bridgedForgiven)
+        }
+    }
 }
