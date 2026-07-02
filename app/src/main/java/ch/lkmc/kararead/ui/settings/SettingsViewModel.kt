@@ -8,6 +8,7 @@ import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.repository.KarakeepRepository
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.work.OfflineSync
+import ch.lkmc.kararead.work.PendingOpSync
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +37,7 @@ class SettingsViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val repository: KarakeepRepository,
     private val offlineSync: OfflineSync,
+    private val pendingOpSync: PendingOpSync,
 ) : ViewModel() {
 
     private val base = combine(
@@ -119,7 +121,11 @@ class SettingsViewModel @Inject constructor(
 
     fun signOut(onDone: () -> Unit) {
         viewModelScope.launch {
-            repository.clearCache()
+            // Everything local is per-account: queued outbox ops would replay
+            // against the next server, and progress/stats would bleed across.
+            pendingOpSync.cancel()
+            offlineSync.cancelAll()
+            repository.clearLocalState()
             settings.clearConnection()
             settings.setReadLaterList(null, null)
             onDone()

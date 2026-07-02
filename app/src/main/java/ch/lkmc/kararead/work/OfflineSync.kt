@@ -53,6 +53,12 @@ class OfflineSync @Inject constructor(
         )
     }
 
+    /** Cancel all prefetch work (sign-out). */
+    fun cancelAll() {
+        workManager.cancelUniqueWork(OfflinePrefetchWorker.PERIODIC_NAME)
+        workManager.cancelUniqueWork(OfflinePrefetchWorker.ONESHOT_NAME)
+    }
+
     private fun constraints(wifiOnly: Boolean) = Constraints.Builder()
         .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
         .build()

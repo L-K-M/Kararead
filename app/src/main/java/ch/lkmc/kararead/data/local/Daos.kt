@@ -23,6 +23,9 @@ interface ReadingProgressDao {
 
     @Query("DELETE FROM reading_progress WHERE bookmarkId = :id")
     suspend fun delete(id: String)
+
+    @Query("DELETE FROM reading_progress")
+    suspend fun clear()
 }
 
 @Dao
@@ -154,6 +157,9 @@ interface PendingOpDao {
 
     @Query("UPDATE pending_op SET attempts = :attempts WHERE id = :id")
     suspend fun setAttempts(id: Long, attempts: Int)
+
+    @Query("DELETE FROM pending_op")
+    suspend fun clear()
 }
 
 @Dao
