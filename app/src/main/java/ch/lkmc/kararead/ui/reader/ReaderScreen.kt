@@ -736,35 +736,42 @@ private fun HighlightsSheet(
         ) {
             Text("Highlights", style = MaterialTheme.typography.titleLarge)
             androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
-            highlights.forEach { hl ->
-                androidx.compose.foundation.layout.Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { onEdit(hl.id) }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            hl.text ?: "(highlight)",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        hl.note?.takeIf { it.isNotBlank() }?.let { note ->
-                            androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
-                            Text(
-                                note,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+            // Lazy + height-capped (like the voice picker below): a plain
+            // Column clipped anything past the sheet's max height, making
+            // long highlight lists unreachable.
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                items(highlights, key = { it.id }) { hl ->
+                    Column {
+                        androidx.compose.foundation.layout.Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onEdit(hl.id) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    hl.text ?: "(highlight)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                hl.note?.takeIf { it.isNotBlank() }?.let { note ->
+                                    androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        note,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { onDelete(hl.id) }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Delete highlight")
+                            }
                         }
-                    }
-                    IconButton(onClick = { onDelete(hl.id) }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Delete highlight")
+                        androidx.compose.material3.HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                        )
                     }
                 }
-                androidx.compose.material3.HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                )
             }
         }
     }

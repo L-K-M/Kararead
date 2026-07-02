@@ -81,4 +81,37 @@ class HighlightsExportTest {
         assertTrue(md.contains("# Real"))
         assertTrue("no separator when only one section renders", !md.contains("---"))
     }
+
+    @Test
+    fun `a note-only highlight keeps its note in the export`() {
+        val md = highlightsToMarkdown(
+            title = "T",
+            url = null,
+            highlights = listOf(
+                Highlight(
+                    id = "1", bookmarkId = "b", startOffset = 0, endOffset = 0,
+                    color = "yellow", text = null, note = "imported thought",
+                ),
+            ),
+        )
+        org.junit.Assert.assertTrue(md.contains("imported thought"))
+    }
+
+    @Test
+    fun `combined export keeps sections whose highlights are note-only`() {
+        val md = highlightsToMarkdown(
+            listOf(
+                HighlightCollection(
+                    title = "A", url = null,
+                    highlights = listOf(
+                        Highlight(
+                            id = "1", bookmarkId = "b", startOffset = 0, endOffset = 0,
+                            color = "yellow", text = null, note = "only a note",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        org.junit.Assert.assertTrue(md.contains("only a note"))
+    }
 }

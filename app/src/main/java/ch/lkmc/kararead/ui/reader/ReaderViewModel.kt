@@ -320,20 +320,38 @@ class ReaderViewModel @Inject constructor(
     /** Set (or clear, with a blank string) the note attached to a highlight. */
     fun updateHighlightNote(id: String, note: String) {
         val trimmed = note.trim()
+        val previous = _highlights.value.firstOrNull { it.id == id }?.note
         // Optimistic local update so the sheet reflects the change immediately.
         _highlights.update { list -> list.map { if (it.id == id) it.copy(note = trimmed) else it } }
         scheduleHighlightAutoSave()
         viewModelScope.launch {
             runCatching { repository.updateHighlightNote(id, trimmed) }
                 .onSuccess { updated -> _highlights.update { l -> l.map { if (it.id == id) updated else it } } }
-                .onFailure { _messages.trySend("Couldn't save note — try again") }
+                .onFailure {
+                    // Revert: keeping the unsaved note (and auto-exporting it)
+                    // would silently diverge from the server.
+                    _highlights.update { l -> l.map { h -> if (h.id == id) h.copy(note = previous) else h } }
+                    scheduleHighlightAutoSave()
+                    _messages.trySend("Couldn't save note — try again")
+                }
         }
     }
 
     fun removeHighlight(id: String) {
+        val removed = _highlights.value.firstOrNull { it.id == id } ?: return
         _highlights.update { list -> list.filterNot { it.id == id } }
         scheduleHighlightAutoSave()
-        viewModelScope.launch { runCatching { repository.deleteHighlight(id) } }
+        viewModelScope.launch {
+            runCatching { repository.deleteHighlight(id) }
+                .onFailure {
+                    // Resurrect the highlight: the delete never reached the
+                    // server, and pretending otherwise only lasts until the
+                    // next open anyway.
+                    _highlights.update { it + removed }
+                    scheduleHighlightAutoSave()
+                    _messages.trySend("Couldn't delete highlight — try again")
+                }
+        }
     }
 
     fun highlight(id: String): Highlight? = _highlights.value.firstOrNull { it.id == id }
@@ -371,7 +389,9 @@ class ReaderViewModel @Inject constructor(
                 highlights = _highlights.value,
             )
             withContext(Dispatchers.IO) {
-                ch.lkmc.kararead.util.saveMarkdownToFolder(appContext, Uri.parse(folder), bm.displayTitle, md)
+                ch.lkmc.kararead.util.saveMarkdownToFolder(
+                    appContext, Uri.parse(folder), bm.displayTitle, md, uniqueKey = bm.id,
+                )
             }
         }
     }
@@ -395,7 +415,10 @@ class ReaderViewModel @Inject constructor(
                 return@launch
             }
             val saved = withContext(Dispatchers.IO) {
-                ch.lkmc.kararead.util.saveMarkdownToFolder(appContext, Uri.parse(folder), title, md)
+                ch.lkmc.kararead.util.saveMarkdownToFolder(
+                    appContext, Uri.parse(folder), title, md,
+                    uniqueKey = _state.value.article?.bookmark?.id,
+                )
             }
             _messages.trySend(
                 if (saved != null) "Saved \"$saved\"" else "Couldn't save — re-pick the folder in Settings",

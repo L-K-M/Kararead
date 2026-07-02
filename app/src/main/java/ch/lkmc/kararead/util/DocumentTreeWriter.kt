@@ -38,9 +38,20 @@ fun saveMarkdownToFolder(
     treeUri: Uri,
     baseName: String,
     content: String,
+    /**
+     * Stable per-document key (e.g. the bookmark id) appended to the file
+     * name. Without it, two articles with the same title - or titles equal in
+     * their first 120 chars - silently overwrite each other's exports.
+     */
+    uniqueKey: String? = null,
 ): String? = runCatching {
     val resolver = context.contentResolver
-    val fileName = safeFileName(baseName, "highlights") + ".md"
+    val suffix = uniqueKey
+        ?.let { safeFileName(it, "").take(10) }
+        ?.takeIf { it.isNotBlank() }
+        ?.let { " - " + it }
+        .orEmpty()
+    val fileName = safeFileName(baseName, "highlights") + suffix + ".md"
     val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
     val target = findChildByName(context, treeUri, treeDocId, fileName)
         ?: DocumentsContract.createDocument(
