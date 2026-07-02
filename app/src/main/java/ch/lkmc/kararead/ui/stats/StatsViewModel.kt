@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.lkmc.kararead.data.repository.KarakeepRepository
 import ch.lkmc.kararead.util.DayMinutes
+import ch.lkmc.kararead.util.HeatmapDay
 import ch.lkmc.kararead.util.ReadingStats
 import ch.lkmc.kararead.util.computeReadingStats
 import ch.lkmc.kararead.util.minutesInLastDays
+import ch.lkmc.kararead.util.readingHeatmap
 import ch.lkmc.kararead.util.recentDaysSeries
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -23,8 +25,12 @@ import javax.inject.Inject
 data class StatsUiState(
     val stats: ReadingStats = ReadingStats(),
     val last14Days: List<DayMinutes> = emptyList(),
+    val heatmap: List<HeatmapDay> = emptyList(),
     val minutesThisWeek: Int = 0,
 )
+
+/** Weeks shown in the reading heatmap (a calm ~quarter of a year). */
+private const val HEATMAP_WEEKS = 13
 
 @HiltViewModel
 class StatsViewModel @Inject constructor(
@@ -49,6 +55,7 @@ class StatsViewModel @Inject constructor(
             StatsUiState(
                 stats = computeReadingStats(byDate),
                 last14Days = recentDaysSeries(byDate, days = 14),
+                heatmap = readingHeatmap(byDate, weeks = HEATMAP_WEEKS),
                 minutesThisWeek = minutesInLastDays(byDate, days = 7),
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, StatsUiState())
