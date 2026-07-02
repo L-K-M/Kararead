@@ -39,6 +39,7 @@ private const val READER_TOP_GAP_DP = 16
 class ReaderPager {
     internal var pageBy: ((Int) -> Unit)? = null
     internal var scrollToFraction: ((Float) -> Unit)? = null
+    internal var scrollToHighlight: ((String) -> Unit)? = null
     fun page(direction: Int) {
         pageBy?.invoke(direction)
     }
@@ -46,6 +47,11 @@ class ReaderPager {
     /** Smoothly scroll the article to a 0..1 position (used to follow narration). */
     fun scrollTo(fraction: Float) {
         scrollToFraction?.invoke(fraction)
+    }
+
+    /** Scroll a saved highlight's mark into view (jump-to-highlight). */
+    fun scrollToHighlight(id: String) {
+        scrollToHighlight?.invoke(id)
     }
 }
 
@@ -300,6 +306,10 @@ fun ReaderWebView(
                 pager.scrollToFraction = { f ->
                     evaluateJavascript("window.krSmoothToFraction && window.krSmoothToFraction($f);", null)
                 }
+                pager.scrollToHighlight = { id ->
+                    val arg = org.json.JSONObject.quote(id)
+                    evaluateJavascript("window.krScrollToHighlight && window.krScrollToHighlight($arg);", null)
+                }
 
                 // Native in-page search. findAllAsync highlights every match and
                 // selects the first; findNext walks between them. Results (active
@@ -389,6 +399,7 @@ fun ReaderWebView(
         onRelease = {
             pager.pageBy = null
             pager.scrollToFraction = null
+            pager.scrollToHighlight = null
             finder.findAll = null
             finder.findNextMatch = null
             finder.clearMatches = null
