@@ -39,6 +39,10 @@ interface CachedArticleDao {
     @Query("DELETE FROM cached_article WHERE bookmarkId = :id")
     suspend fun delete(id: String)
 
+    /** Mark a cached article as just-used, so age-based cleanup spares it. */
+    @Query("UPDATE cached_article SET cachedAt = :now WHERE bookmarkId = :id")
+    suspend fun touch(id: String, now: Long)
+
     @Query("DELETE FROM cached_article WHERE cachedAt < :threshold")
     suspend fun deleteOlderThan(threshold: Long)
 

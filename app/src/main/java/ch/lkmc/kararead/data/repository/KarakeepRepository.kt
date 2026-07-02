@@ -110,15 +110,32 @@ class KarakeepRepository @Inject constructor(
 
     suspend fun getArticle(id: String, forceRefresh: Boolean = false): ReaderArticle {
         if (!forceRefresh) {
-            cacheDao.get(id)?.let { return it.toReaderArticle() }
+            cacheDao.get(id)?.let { cached ->
+                // A body-less row was cached while the server was still crawling
+                // the article — treat it as a miss so the copy can heal itself
+                // once the crawl finishes, instead of showing "no readable
+                // content yet" forever.
+                if (!cached.html.isNullOrBlank()) {
+                    // Reading from cache counts as use: keep cachedAt fresh so the
+                    // 30-day cleanup evicts by last-opened, not first-downloaded.
+                    runCatching { cacheDao.touch(id, System.currentTimeMillis()) }
+                    return cached.toReaderArticle()
+                }
+            }
         }
         return try {
             val dto = api().getBookmark(id, includeContent = true)
             val article = dto.toReaderArticle(assetResolver)
-            runCatching { cacheDao.upsert(article.toCacheEntity(System.currentTimeMillis())) }
+            // Don't cache content-less articles: the cache-first path above
+            // would keep serving the empty copy long after the server has the
+            // real content.
+            if (!article.htmlContent.isNullOrBlank()) {
+                runCatching { cacheDao.upsert(article.toCacheEntity(System.currentTimeMillis())) }
+            }
             article
         } catch (e: Exception) {
-            // Offline fallback to any cached copy.
+            // Offline fallback to any cached copy (even a body-less one beats
+            // an error screen when there's no connection).
             cacheDao.get(id)?.toReaderArticle() ?: throw e
         }
     }
