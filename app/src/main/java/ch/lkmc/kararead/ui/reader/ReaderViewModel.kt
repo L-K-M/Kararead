@@ -46,7 +46,6 @@ data class ReaderUiState(
     val archived: Boolean = false,
     val initialProgress: Float = 0f,
     val initialAnchor: String? = null,
-    val progress: Float = 0f,
     val offline: Boolean = false,
 )
 
@@ -103,6 +102,13 @@ class ReaderViewModel @Inject constructor(
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state
 
+    // Reading progress lives outside ReaderUiState on purpose: the WebView
+    // reports it every scroll frame, and copying the whole UI state per frame
+    // recomposed the entire reader ~60-120x/s during a fling. Consumers that
+    // only care about coarse changes derive from this flow instead.
+    private val _progress = MutableStateFlow(0f)
+    val progress: StateFlow<Float> = _progress
+
     val readerPrefs: StateFlow<ReaderPreferences> =
         settings.readerPreferences.stateIn(
             viewModelScope, SharingStarted.Eagerly, ReaderPreferences(),
@@ -153,9 +159,9 @@ class ReaderViewModel @Inject constructor(
                             archived = article.bookmark.archived,
                             initialProgress = initial?.fraction ?: 0f,
                             initialAnchor = initial?.anchor,
-                            progress = initial?.fraction ?: 0f,
                         )
                     }
+                    _progress.value = initial?.fraction ?: 0f
                     // The article may have come from the cache; reconcile the
                     // read/favourite flags with the live server state when we can.
                     repository.refreshReadState(bookmarkId)?.let { (archived, favourited) ->
@@ -180,7 +186,7 @@ class ReaderViewModel @Inject constructor(
 
     /** Called frequently from the WebView scroll bridge; persists with debounce. */
     fun onProgress(fraction: Float, anchor: String) {
-        _state.update { it.copy(progress = fraction) }
+        _progress.value = fraction
         pendingFraction = fraction
         pendingAnchor = anchor.takeIf { it.isNotEmpty() }
         if (kotlin.math.abs(fraction - lastSaved) < 0.01f) return
@@ -354,7 +360,7 @@ class ReaderViewModel @Inject constructor(
     /** Whether the current article has readable text to narrate. */
     val canListen: Boolean get() = !_state.value.article?.textContent.isNullOrBlank()
 
-    fun listen() = speaker.start(_state.value.article?.textContent, _state.value.progress)
+    fun listen() = speaker.start(_state.value.article?.textContent, _progress.value)
     fun toggleSpeech() = speaker.togglePlayPause()
     fun skipSpeech(delta: Int) = speaker.skipBy(delta)
     fun stopSpeech() = speaker.stop()

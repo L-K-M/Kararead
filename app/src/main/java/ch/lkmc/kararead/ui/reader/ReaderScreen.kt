@@ -93,6 +93,7 @@ fun ReaderScreen(
 ) {
     val scope = rememberCoroutineScope()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val progress by viewModel.progress.collectAsStateWithLifecycle()
     val prefs by viewModel.readerPrefs.collectAsStateWithLifecycle()
     val speech by viewModel.speech.collectAsStateWithLifecycle()
     val voices by viewModel.voices.collectAsStateWithLifecycle()
@@ -257,8 +258,13 @@ fun ReaderScreen(
     // The "Done · Next" badge shows near the end and covers the bottom-right text.
     // Tell the WebView how much vertical space it occupies (nav-bar inset + its own
     // height + margin), in CSS px, so paging doesn't land text behind it.
-    val finishVisible =
-        state.article != null && !state.archived && !speech.active && state.progress >= 0.92f
+    // derivedStateOf: per-frame progress ticks only invalidate readers when the
+    // 0.92 threshold is actually crossed.
+    val finishVisible by remember {
+        androidx.compose.runtime.derivedStateOf {
+            state.article != null && !state.archived && !speech.active && progress >= 0.92f
+        }
+    }
     val density = LocalDensity.current
     val navBottomDp = WindowInsets.navigationBarsIgnoringVisibility.getBottom(density) / density.density
     val pageCoverCssPx = if (finishVisible && finishFabHeightPx > 0) {
@@ -326,18 +332,26 @@ fun ReaderScreen(
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        val left = ch.lkmc.kararead.util.minutesLeft(
-                            bm?.readingTimeMinutes, state.progress,
-                        )
-                        val sub = when {
-                            state.archived -> "Read"
-                            left == 0 -> "Almost done"
-                            left != null -> "$left min left"
-                            else -> null
+                        // Derived: the label only changes when the whole
+                        // minute does, not on every scroll frame.
+                        val sub by remember(bm?.readingTimeMinutes) {
+                            androidx.compose.runtime.derivedStateOf {
+                                val left = ch.lkmc.kararead.util.minutesLeft(
+                                    bm?.readingTimeMinutes, progress,
+                                )
+                                when {
+                                    state.archived -> "Read"
+                                    left == 0 -> "Almost done"
+                                    // "finish by" clock: quietly motivating, and
+                                    // free — we already know the minutes left.
+                                    left != null -> "$left min left · ${finishByLabel(context, left)}"
+                                    else -> null
+                                }
+                            }
                         }
                         if (sub != null) {
                             Text(
-                                sub,
+                                sub!!,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -517,7 +531,9 @@ fun ReaderScreen(
         // Thin reading-progress line, pinned unobtrusively to the bottom.
         if (state.article != null) {
             LinearProgressIndicator(
-                progress = { state.progress },
+                // Deferred read: the lambda is evaluated at draw time, so the
+                // per-frame updates never recompose this screen.
+                progress = { progress },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -945,6 +961,12 @@ private tailrec fun android.content.Context.findVolumeKeyController(): ch.lkmc.k
 
 @Composable
 private fun LocalContentColorSafe(): Color = MaterialTheme.colorScheme.onSurfaceVariant
+
+/** "≈9:42 PM" — the locale-formatted wall-clock time [minutesLeft] from now. */
+private fun finishByLabel(context: android.content.Context, minutesLeft: Int): String {
+    val at = java.util.Date(System.currentTimeMillis() + minutesLeft * 60_000L)
+    return "≈" + android.text.format.DateFormat.getTimeFormat(context).format(at)
+}
 
 private fun openUrl(context: android.content.Context, url: String) {
     runCatching {

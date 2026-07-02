@@ -328,19 +328,38 @@ body {
       '#kr-content p,#kr-content li,#kr-content blockquote,#kr-content pre,' +
       '#kr-content figure,#kr-content img,#kr-content table');
   }
+  // Cached block geometry for the per-frame anchor: walking every block with
+  // getBoundingClientRect() on each scroll frame is O(article length) in
+  // forced layout reads — the main source of scroll jank on long articles.
+  // The cache rebuilds whenever the document height changes (images/fonts
+  // loading, preference reflows), which is a single cheap read per frame.
+  var krBlockTops = null, krBlockHeights = null, krCachedDocHeight = -1;
+  function krRebuildBlockCache(){
+    var blocks = krBlocks();
+    var viewTop = krScrollTop();
+    krBlockTops = new Array(blocks.length);
+    krBlockHeights = new Array(blocks.length);
+    for (var i = 0; i < blocks.length; i++){
+      var r = blocks[i].getBoundingClientRect();
+      krBlockTops[i] = r.top + viewTop;
+      krBlockHeights[i] = r.height || 1;
+    }
+    krCachedDocHeight = document.documentElement.scrollHeight;
+  }
   // "<blockIndex>:<fractionWithinBlock>" for the block at the top of the viewport.
   function krComputeAnchor(){
-    var blocks = krBlocks(); if (!blocks.length) return '';
-    var viewTop = krScrollTop();
-    var idx = 0;
-    for (var i = 0; i < blocks.length; i++){
-      var top = blocks[i].getBoundingClientRect().top + viewTop;
-      if (top <= viewTop + 1) idx = i; else break;
+    if (!krBlockTops || krCachedDocHeight !== document.documentElement.scrollHeight){
+      krRebuildBlockCache();
     }
-    var rect = blocks[idx].getBoundingClientRect();
-    var elTop = rect.top + viewTop;
-    var h = rect.height || 1;
-    var frac = Math.min(1, Math.max(0, (viewTop - elTop) / h));
+    var n = krBlockTops.length; if (!n) return '';
+    var viewTop = krScrollTop();
+    // Binary search: last block whose cached top is above the viewport top.
+    var lo = 0, hi = n - 1, idx = 0;
+    while (lo <= hi){
+      var mid = (lo + hi) >> 1;
+      if (krBlockTops[mid] <= viewTop + 1){ idx = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    var frac = Math.min(1, Math.max(0, (viewTop - krBlockTops[idx]) / krBlockHeights[idx]));
     return idx + ':' + frac.toFixed(4);
   }
   function krScrollToAnchor(anchor){
