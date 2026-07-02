@@ -34,7 +34,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +69,16 @@ fun SettingsScreen(
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull() ?: "1.0"
     }
+    var editingConnection by remember { mutableStateOf(false) }
+
+    if (editingConnection) {
+        ConnectionEditDialog(
+            serverUrl = state.serverUrl,
+            fallbackUrl = state.fallbackUrl,
+            onDismiss = { editingConnection = false },
+            onSave = viewModel::updateConnection,
+        )
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(
@@ -75,7 +87,12 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             SectionHeader("Connection")
-            SettingRow(title = "Server", subtitle = state.serverUrl.ifBlank { "Not connected" })
+            SettingRow(
+                title = "Server",
+                subtitle = state.serverUrl.ifBlank { "Not connected" },
+                onClick = { editingConnection = true },
+                actionLabel = "Edit",
+            )
             if (state.fallbackUrl.isNotBlank()) {
                 SettingRow(title = "Fallback server", subtitle = state.fallbackUrl)
             }
@@ -210,6 +227,89 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+/**
+ * Edit the server connection in place (rotate an API key, move the server)
+ * without signing out — which would wipe the cache, reading progress and stats.
+ * The API key field is left blank and only overwrites the stored key if filled,
+ * so the existing key is never surfaced back to the screen.
+ */
+@Composable
+private fun ConnectionEditDialog(
+    serverUrl: String,
+    fallbackUrl: String,
+    onDismiss: () -> Unit,
+    onSave: (serverUrl: String, fallbackUrl: String, apiKey: String, (ConnectionEditResult) -> Unit) -> Unit,
+) {
+    var server by remember { mutableStateOf(serverUrl) }
+    var fallback by remember { mutableStateOf(fallbackUrl) }
+    var apiKey by remember { mutableStateOf("") }
+    var testing by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { if (!testing) onDismiss() },
+        title = { Text("Edit connection") },
+        text = {
+            Column {
+                androidx.compose.material3.OutlinedTextField(
+                    value = server,
+                    onValueChange = { server = it; error = null },
+                    label = { Text("Server URL") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = fallback,
+                    onValueChange = { fallback = it; error = null },
+                    label = { Text("Fallback URL (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it; error = null },
+                    label = { Text("API key") },
+                    placeholder = { Text("Leave blank to keep current") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (error != null) {
+                    androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 8.dp))
+                    Text(
+                        error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                enabled = !testing,
+                onClick = {
+                    testing = true
+                    error = null
+                    onSave(server, fallback, apiKey) { result ->
+                        testing = false
+                        when (result) {
+                            is ConnectionEditResult.Success -> onDismiss()
+                            is ConnectionEditResult.Failure -> error = result.message
+                        }
+                    }
+                },
+            ) { Text(if (testing) "Testing…" else "Test & save") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(
+                enabled = !testing,
+                onClick = onDismiss,
+            ) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
