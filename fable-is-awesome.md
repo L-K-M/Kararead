@@ -569,7 +569,8 @@ not because the app is bad.
 
 - **H7 ✨ Add/remove an article to/from lists in-app** — the API calls exist and
   are used by ShareActivity; the reader overflow and long-press sheet are the
-  natural homes. **Status: ⬜**
+  natural homes. **Status: 🟢 PR #70 (`fable/add-to-list`)** — long-press →
+  "Add to list…" opens a manual-list picker with current membership checked.
 
 - **H8 ✨ Media-session TTS** (deferred B5) — still the right call that it's a
   larger effort; still the single biggest listening upgrade (lock-screen
@@ -581,7 +582,7 @@ not because the app is bad.
 
 - **H10 ✨ Surface the outbox** — after B2/B3, a quiet "N changes waiting to sync"
   row in Settings (with retry) turns invisible best-effort into trust.
-  **Status: ⬜**
+  **Status: 🟢 PR #65 (`fable/outbox-indicator`)**
 
 ## I. Delight — novel, quirky, worth-smiling-at
 
@@ -608,20 +609,26 @@ not because the app is bad.
 
 - **I6 💡 Quote cards** — render a highlight + title + site into a shareable
   image (Compose → bitmap); highlights are the app's soul and this is how they
-  travel.
+  travel. **Status: 🟢 PR #69 (`fable/quote-cards`)** — Canvas-rendered card,
+  shared via FileProvider from the Highlights screen's per-row action.
 
 - **I7 💡 Sepia at sunset** — an optional twist on H3's Auto theme: Light → Sepia
   in the evening → Dark at night, using sunrise/sunset or plain clock hours. A
-  reader app that gets warmer as your day winds down.
+  reader app that gets warmer as your day winds down. **Status: 🟢 PR #66
+  (`fable/sunset-theme`)** — a Sunset reader theme that ticks the clock live.
 
 - **I8 💡 App shortcuts** — long-press the launcher icon: "Continue: ⟨last
   article⟩" (the recents strip already knows) and "Surprise me".
 
 - **I9 💡 Streak forgiveness token** — one "quiet day" per week that doesn't
-  break the streak (D4-adjacent). Calm apps forgive.
+  break the streak (D4-adjacent). Calm apps forgive. **Status: 🟢 PR #67
+  (`fable/streak-forgiveness`)** — one forgiven day per rolling week, gently
+  acknowledged in Stats.
 
 - **I10 💡 Pull-to-refresh haiku** — the refresh spinner occasionally shows a
   one-line reading proverb. Cheap, dumb, delightful. (Optional. But fun.)
+  **Status: 🟢 PR #68 (`fable/refresh-haiku`)** — ~1 pull in 4 shows a fading
+  proverb under the spinner.
 
 ## J. Engineering health
 
