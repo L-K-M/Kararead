@@ -183,6 +183,7 @@ fun ReaderWebView(
     article: ReaderArticle,
     prefs: ReaderPreferences,
     baseUrl: String?,
+    presanitizedBody: String? = null,
     initialProgress: Float,
     initialAnchor: String?,
     assetLoader: AssetLoader,
@@ -212,11 +213,13 @@ fun ReaderWebView(
     // below, so the reader CSS applies it itself. (A change recreates the
     // activity, so it's stable for the lifetime of this composition.)
     val systemFontScale = density.fontScale
-    // Build the document once per article; preference changes are applied via JS.
+    // Build the document once per article; preference changes are applied via
+    // JS. With the body sanitized ahead of time this is cheap string assembly.
     val html = remember(article.bookmark.id, baseUrl, safeTopPx) {
         ReaderHtmlBuilder.build(
             article, prefs,
-            baseUri = baseUrl, safeTopPx = safeTopPx, systemFontScale = systemFontScale,
+            baseUri = baseUrl, safeTopPx = safeTopPx,
+            systemFontScale = systemFontScale, presanitizedBody = presanitizedBody,
         )
     }
 

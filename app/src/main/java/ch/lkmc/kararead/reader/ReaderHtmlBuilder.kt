@@ -55,6 +55,15 @@ object ReaderHtmlBuilder {
         )
     }
 
+    /**
+     * Sanitize an article body off the UI thread ahead of [build]. Jsoup over
+     * a long article costs tens of milliseconds; running it inside composition
+     * (where build used to do it) hitched the reader's open transition.
+     * Returns null when there is no body (build shows its placeholder).
+     */
+    fun sanitizeBody(html: String?, baseUri: String?): String? =
+        html?.let { sanitize(it, baseUri.orEmpty()) }
+
     /** Sanitize crawled HTML: keep rich structure, drop scripts/styles/iframes. */
     private fun sanitize(html: String, baseUri: String): String {
         val safelist = Safelist.relaxed()
@@ -80,10 +89,13 @@ object ReaderHtmlBuilder {
         baseUri: String? = null,
         safeTopPx: Int = 0,
         systemFontScale: Float = 1f,
+        /** Body already run through [sanitizeBody] (off the UI thread). */
+        presanitizedBody: String? = null,
     ): String {
         val palette = paletteFor(prefs.theme)
         val bm = article.bookmark
-        val body = article.htmlContent?.let { sanitize(it, baseUri.orEmpty()) }
+        val body = presanitizedBody
+            ?: article.htmlContent?.let { sanitize(it, baseUri.orEmpty()) }
             ?: "<p class=\"kr-empty\">This article has no readable content yet. " +
             "It may still be processing on the server — try opening the original.</p>"
 

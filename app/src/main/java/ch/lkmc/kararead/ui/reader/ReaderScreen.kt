@@ -306,6 +306,7 @@ fun ReaderScreen(
                     article = state.article!!,
                     prefs = prefs,
                     baseUrl = viewModel.serverOrigin,
+                    presanitizedBody = state.sanitizedBody,
                     // The live restore point, not the open-time snapshot: a
                     // rebuilt WebView (rotation, recreation) lands where the
                     // reader actually is. Read from the ViewModel (plain vars,
