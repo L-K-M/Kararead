@@ -76,3 +76,60 @@ data class ReadingDayEntity(
     val seconds: Long,
     val updatedAt: Long,
 )
+
+/**
+ * A locally cached highlight, so highlights render in the reader (and export)
+ * even offline, and so a highlight made offline isn't lost before it syncs.
+ *
+ * [id] is the server's id once synced; until then it's a local placeholder
+ * ([LOCAL_ID_PREFIX] + UUID) that the outbox rewrites to the real id after a
+ * queued create reaches the server. [synced] is false while a create/update
+ * for this row is still queued.
+ */
+@Entity(tableName = "cached_highlight", indices = [Index("bookmarkId")])
+data class CachedHighlightEntity(
+    @PrimaryKey val id: String,
+    val bookmarkId: String,
+    val startOffset: Int,
+    val endOffset: Int,
+    val color: String,
+    val text: String?,
+    val note: String?,
+    val updatedAt: Long,
+    val synced: Boolean,
+) {
+    companion object {
+        /** Marks a highlight created offline whose server id isn't known yet. */
+        const val LOCAL_ID_PREFIX = "local-"
+    }
+}
+
+/**
+ * A highlight mutation (create / set-note / delete) queued while offline, to be
+ * replayed when connectivity returns — the highlights outbox. Replayed in
+ * insertion order; a queued create's local id is rewritten to the server id
+ * (in this table and the cache) once it lands, so later note/delete ops target
+ * the right highlight.
+ */
+@Entity(tableName = "highlight_op", indices = [Index("highlightId")])
+data class HighlightOpEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** The [CachedHighlightEntity.id] this op concerns (local until a create syncs). */
+    val highlightId: String,
+    val bookmarkId: String,
+    /** [TYPE_CREATE], [TYPE_UPDATE_NOTE] or [TYPE_DELETE]. */
+    val type: String,
+    val startOffset: Int = 0,
+    val endOffset: Int = 0,
+    val color: String = "yellow",
+    val text: String? = null,
+    val note: String? = null,
+    val createdAt: Long,
+    val attempts: Int = 0,
+) {
+    companion object {
+        const val TYPE_CREATE = "create"
+        const val TYPE_UPDATE_NOTE = "update_note"
+        const val TYPE_DELETE = "delete"
+    }
+}

@@ -2,6 +2,10 @@ package ch.lkmc.kararead.data.repository
 
 import ch.lkmc.kararead.data.local.CachedArticleDao
 import ch.lkmc.kararead.data.local.CachedArticleEntity
+import ch.lkmc.kararead.data.local.CachedHighlightDao
+import ch.lkmc.kararead.data.local.CachedHighlightEntity
+import ch.lkmc.kararead.data.local.HighlightOpDao
+import ch.lkmc.kararead.data.local.HighlightOpEntity
 import ch.lkmc.kararead.data.local.PendingOpDao
 import ch.lkmc.kararead.data.local.PendingOpEntity
 import ch.lkmc.kararead.data.local.ReadingProgressDao
@@ -10,9 +14,11 @@ import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.remote.KarakeepApi
 import ch.lkmc.kararead.data.remote.dto.BookmarkDto
 import ch.lkmc.kararead.data.remote.dto.ContentDto
+import ch.lkmc.kararead.data.remote.dto.HighlightDto
 import ch.lkmc.kararead.data.remote.dto.ListDto
 import ch.lkmc.kararead.data.remote.dto.ListsResponseDto
 import ch.lkmc.kararead.data.remote.dto.PaginatedBookmarksDto
+import ch.lkmc.kararead.data.remote.dto.PaginatedHighlightsDto
 import ch.lkmc.kararead.data.remote.dto.UpdateBookmarkRequest
 import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.work.PendingOpSync
@@ -35,6 +41,8 @@ class KarakeepRepositoryTest {
     private val pendingOpDao = mockk<PendingOpDao>(relaxed = true)
     private val pendingOpSync = mockk<PendingOpSync>(relaxed = true)
     private val assetLoader = mockk<AssetLoader>(relaxed = true)
+    private val highlightDao = mockk<CachedHighlightDao>(relaxed = true)
+    private val highlightOpDao = mockk<HighlightOpDao>(relaxed = true)
 
     private lateinit var repo: KarakeepRepository
 
@@ -44,6 +52,7 @@ class KarakeepRepositoryTest {
         every { apiProvider.assetUrl(any()) } returns null
         repo = KarakeepRepository(
             apiProvider, progressDao, cacheDao, statsDao, pendingOpDao, pendingOpSync, assetLoader,
+            highlightDao, highlightOpDao,
         )
     }
 
@@ -282,5 +291,115 @@ class KarakeepRepositoryTest {
 
         coVerify { api.addBookmarkToList("l1", "abc") }
         coVerify { api.removeBookmarkFromList("l1", "abc") }
+    }
+
+    // --- Offline highlights (D13) ---
+
+    @Test
+    fun `creating online swaps the optimistic local row for the server's`() = runTest {
+        coEvery { api.createHighlight(any()) } returns
+            HighlightDto(id = "srv1", bookmarkId = "b", startOffset = 0, endOffset = 5, text = "hi")
+
+        val result = repo.createHighlight("b", 0, 5, "hi")
+
+        assert(result.id == "srv1")
+        // Optimistic unsynced insert first, then the server row replaces it.
+        coVerify { highlightDao.upsert(match { !it.synced }) }
+        coVerify { highlightDao.upsert(match { it.id == "srv1" && it.synced }) }
+        coVerify(exactly = 0) { highlightOpDao.insert(any()) }
+    }
+
+    @Test
+    fun `creating offline keeps the local row and queues a create op`() = runTest {
+        coEvery { api.createHighlight(any()) } throws java.io.IOException("offline")
+
+        val result = repo.createHighlight("b", 0, 5, "hi")
+
+        assert(result.id.startsWith(CachedHighlightEntity.LOCAL_ID_PREFIX))
+        coVerify { highlightOpDao.insert(match { it.type == HighlightOpEntity.TYPE_CREATE }) }
+        coVerify { pendingOpSync.schedule() }
+        // The optimistic row must survive so the reader still shows it offline.
+        coVerify(exactly = 0) { highlightDao.delete(any()) }
+    }
+
+    @Test
+    fun `deleting a still-local highlight never touches the server`() = runTest {
+        val localId = CachedHighlightEntity.LOCAL_ID_PREFIX + "xyz"
+
+        repo.deleteHighlight(localId)
+
+        coVerify { highlightDao.delete(localId) }
+        coVerify { highlightOpDao.deleteForHighlight(localId) }
+        coVerify(exactly = 0) { api.deleteHighlight(any()) }
+    }
+
+    @Test
+    fun `deleting offline queues a delete op`() = runTest {
+        coEvery { highlightDao.get("srv1") } returns
+            CachedHighlightEntity("srv1", "b", 0, 5, "yellow", "hi", null, 0L, synced = true)
+        coEvery { api.deleteHighlight("srv1") } throws java.io.IOException("offline")
+
+        repo.deleteHighlight("srv1")
+
+        coVerify { highlightOpDao.insert(match { it.type == HighlightOpEntity.TYPE_DELETE && it.highlightId == "srv1" }) }
+        coVerify { pendingOpSync.schedule() }
+    }
+
+    @Test
+    fun `flushing a queued create remaps the local id to the server id`() = runTest {
+        val op = HighlightOpEntity(
+            id = 1, highlightId = "local-1", bookmarkId = "b",
+            type = HighlightOpEntity.TYPE_CREATE, startOffset = 0, endOffset = 5,
+            color = "yellow", text = "hi", createdAt = 0L,
+        )
+        coEvery { highlightOpDao.all() } returns listOf(op)
+        coEvery { api.createHighlight(any()) } returns
+            HighlightDto(id = "srv1", bookmarkId = "b", startOffset = 0, endOffset = 5, text = "hi")
+        coEvery { highlightDao.get("local-1") } returns
+            CachedHighlightEntity("local-1", "b", 0, 5, "yellow", "hi", note = "my note", updatedAt = 0L, synced = false)
+
+        val cleared = repo.flushHighlightOps()
+
+        assert(cleared)
+        coVerify { highlightDao.delete("local-1") }
+        // The synced server row keeps the note added while the highlight was local.
+        coVerify { highlightDao.upsert(match { it.id == "srv1" && it.synced && it.note == "my note" }) }
+        coVerify { highlightOpDao.remapHighlightId("local-1", "srv1") }
+        coVerify { highlightOpDao.delete(1) }
+    }
+
+    @Test
+    fun `flushing keeps a delete op through a transport error`() = runTest {
+        val op = HighlightOpEntity(
+            id = 2, highlightId = "srv1", bookmarkId = "b",
+            type = HighlightOpEntity.TYPE_DELETE, createdAt = 0L,
+        )
+        coEvery { highlightOpDao.all() } returns listOf(op)
+        coEvery { api.deleteHighlight("srv1") } throws java.io.IOException("offline")
+
+        val cleared = repo.flushHighlightOps()
+
+        assert(!cleared)
+        coVerify(exactly = 0) { highlightOpDao.delete(2) }
+    }
+
+    @Test
+    fun `refresh does not resurrect a highlight deleted offline`() = runTest {
+        coEvery { api.getBookmarkHighlights("b") } returns PaginatedHighlightsDto(
+            listOf(
+                HighlightDto(id = "srv1", bookmarkId = "b"),
+                HighlightDto(id = "srv2", bookmarkId = "b"),
+            ),
+        )
+        // A queued DELETE for srv1: the server still has it, but we must not
+        // bring it back into the cache.
+        coEvery { highlightOpDao.all() } returns listOf(
+            HighlightOpEntity(id = 1, highlightId = "srv1", bookmarkId = "b", type = HighlightOpEntity.TYPE_DELETE, createdAt = 0L),
+        )
+
+        repo.refreshHighlights("b")
+
+        coVerify { highlightDao.deleteSyncedForBookmark("b") }
+        coVerify { highlightDao.upsertAll(match { list -> list.size == 1 && list.first().id == "srv2" }) }
     }
 }
