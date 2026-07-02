@@ -278,6 +278,10 @@ fun ReaderScreen(
                 onAction = { viewModel.load(forceRefresh = true) },
             )
             state.article != null -> {
+                // Bumping the generation disposes a WebView whose renderer
+                // process died and composes a fresh one in its place.
+                var webViewGeneration by remember { mutableStateOf(0) }
+                androidx.compose.runtime.key(webViewGeneration) {
                 ReaderWebView(
                     article = state.article!!,
                     prefs = prefs,
@@ -298,8 +302,10 @@ fun ReaderScreen(
                     pager = pager,
                     finder = finder,
                     pageBottomCoverPx = pageCoverCssPx,
+                    onRendererGone = { webViewGeneration++ },
                     modifier = Modifier.fillMaxSize(),
                 )
+                }
             }
         }
 

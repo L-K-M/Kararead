@@ -141,6 +141,32 @@ class ReaderHtmlBuilderTest {
     }
 
     @Test
+    fun `element ids survive sanitization so footnote links can resolve`() {
+        val html = "<p>See<a href=\"#fn1\">[1]</a></p><p id=\"fn1\">the footnote</p>"
+        // In production the server origin is the base URI; fragment hrefs get
+        // absolutized against it (the in-page JS matches them via n.hash).
+        val out = ReaderHtmlBuilder.build(
+            article(html), ReaderPreferences(), baseUri = "https://srv.example.com",
+        )
+        assertTrue(out.contains("id=\"fn1\""))
+        assertTrue(out.contains("#fn1\""))
+    }
+
+    @Test
+    fun `document does not claim to be english`() {
+        // Karakeep has no language field; a hardcoded lang="en" made TalkBack
+        // mispronounce every non-English article. Unknown beats wrong.
+        val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
+        assertFalse(out.contains("lang=\"en\""))
+    }
+
+    @Test
+    fun `page turns cancel a superseded animation`() {
+        val out = ReaderHtmlBuilder.build(article("<p>x</p>"), ReaderPreferences())
+        assertTrue(out.contains("krPageAnim"))
+    }
+
+    @Test
     fun `each theme has a distinct background`() {
         val backgrounds = ReaderTheme.entries.map { ReaderHtmlBuilder.paletteFor(it).background }
         assertTrue(backgrounds.toSet().size == ReaderTheme.entries.size)

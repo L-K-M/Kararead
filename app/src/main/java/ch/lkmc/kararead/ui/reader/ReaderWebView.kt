@@ -195,6 +195,7 @@ fun ReaderWebView(
     pager: ReaderPager,
     finder: ReaderFinder,
     pageBottomCoverPx: Int = 0,
+    onRendererGone: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val palette = remember(prefs.theme) { ReaderHtmlBuilder.paletteFor(prefs.theme) }
@@ -313,17 +314,30 @@ fun ReaderWebView(
                         view: WebView,
                         request: WebResourceRequest,
                     ): Boolean {
-                        val url = request.url
-                        return if (url.scheme == "http" || url.scheme == "https") {
-                            runCatching {
-                                view.context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                )
-                            }
-                            true
-                        } else {
-                            false
+                        // Every scheme goes to the system: http(s) to the
+                        // browser, mailto:/tel:/geo: to their handlers.
+                        // Returning false for non-http schemes let the WebView
+                        // try to load them itself, replacing the article with
+                        // a net::ERR_UNKNOWN_URL_SCHEME error page.
+                        runCatching {
+                            view.context.startActivity(
+                                Intent(Intent.ACTION_VIEW, request.url)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
                         }
+                        return true
+                    }
+
+                    override fun onRenderProcessGone(
+                        view: WebView,
+                        detail: android.webkit.RenderProcessGoneDetail,
+                    ): Boolean {
+                        // The renderer died (OOM on a huge article, system
+                        // pressure while backgrounded). Returning false would
+                        // kill the entire app; instead tell the host to drop
+                        // this dead view and rebuild the reader.
+                        onRendererGone()
+                        return true
                     }
                 }
                 loadDataWithBaseURL(baseUrl, html, "text/html", "utf-8", null)
