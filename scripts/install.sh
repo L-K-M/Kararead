@@ -14,8 +14,17 @@
 #
 set -euo pipefail
 
+# Absolute self-path first: usage() re-opens this script, which a relative $0
+# would no longer find after the cd below (e.g. when invoked from scripts/).
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
 # Run from the repository root regardless of where the script is invoked.
-cd "$(dirname "$0")/.."
+cd "$(dirname "$SELF")/.."
+
+# Print the header comment block as the help text, minus the shebang. Stopping
+# at the first non-# line means the help can never drift out of step with the
+# header the way a hardcoded line range does.
+usage() { awk 'NR==1 && /^#!/ {next} /^#/ {sub(/^# ?/,""); print; next} {exit}' "$SELF"; }
 
 VARIANT="debug"
 LAUNCH=1
@@ -24,7 +33,7 @@ for arg in "$@"; do
     --release) VARIANT="release" ;;
     --debug) VARIANT="debug" ;;
     --no-launch) LAUNCH=0 ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
