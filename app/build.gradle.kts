@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    // kotlin-android is gone: AGP 9 has Kotlin built in (DEPENDABOT.md
+    // migration step 3); the compiler plugins below still apply.
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -9,12 +10,13 @@ plugins {
 
 android {
     namespace = "ch.lkmc.kararead"
-    compileSdk = 35
+    // 37: androidx core 1.19 requires it (DEPENDABOT.md step 2).
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "ch.lkmc.kararead"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 4
         versionName = "0.3.0"
 
@@ -56,15 +58,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-        freeCompilerArgs += listOf(
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
-            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-        )
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -81,6 +74,19 @@ android {
             isReturnDefaultValues = true
             isIncludeAndroidResources = true
         }
+    }
+}
+
+// AGP 9 removed the kotlinOptions DSL; compiler options move to the
+// built-in Kotlin extension (DEPENDABOT.md migration step 3).
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.addAll(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+        )
     }
 }
 
