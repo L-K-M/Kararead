@@ -62,6 +62,7 @@ fun ReaderControlsSheet(
     onLineHeight: (Float) -> Unit,
     onMargin: (Int) -> Unit,
     onJustify: (Boolean) -> Unit,
+    onInvertBrightImages: (Boolean) -> Unit,
     onKeepScreenOn: (Boolean) -> Unit,
     onVolumeKeyPaging: (Boolean) -> Unit,
 ) {
@@ -155,6 +156,9 @@ fun ReaderControlsSheet(
                 )
 
                 ToggleRow("Justify text", prefs.justify, onJustify)
+                // Only bites on the dark themes, where a white screenshot would
+                // otherwise glare out of the page.
+                ToggleRow("Invert bright images", prefs.invertBrightImages, onInvertBrightImages)
                 ToggleRow("Keep screen on", prefs.keepScreenOn, onKeepScreenOn)
                 ToggleRow("Volume keys turn pages", prefs.volumeKeyPaging, onVolumeKeyPaging)
                 Spacer(Modifier.height(8.dp))

@@ -98,6 +98,13 @@ data class ReaderPreferences(
     val justify: Boolean = false,
     val keepScreenOn: Boolean = false,
     val volumeKeyPaging: Boolean = true,
+    /**
+     * On a dark theme, flip bright images (screenshots of text, diagrams,
+     * line art on white) so they read as light-on-dark like the rest of the
+     * page. Photographs and already-dark images are left alone — see
+     * [ch.lkmc.kararead.reader.ImageTone].
+     */
+    val invertBrightImages: Boolean = true,
 )
 
 enum class ReaderTheme {

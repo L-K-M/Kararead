@@ -111,7 +111,16 @@ class AssetLoader @Inject constructor(
         }
         val rawType = response.header("Content-Type") ?: "application/octet-stream"
         val mime = rawType.substringBefore(";").trim().ifEmpty { "application/octet-stream" }
-        return WebResourceResponse(mime, null, body.byteStream())
+        return WebResourceResponse(mime, null, body.byteStream()).apply {
+            // Set separately rather than through the status-line constructor,
+            // which validates the code and reason phrase and throws on an empty
+            // one — and OkHttp reports an empty reason phrase for every HTTP/2
+            // response. That throw would be swallowed by intercept()'s catch and
+            // every image would quietly lose its bearer auth.
+            if (response.request.header("Authorization") == null) {
+                setResponseHeaders(CORS_HEADERS)
+            }
+        }
     }
 
     /** Make every successful response cacheable so offline reading isn't at the origin's mercy. */
@@ -132,5 +141,19 @@ class AssetLoader @Inject constructor(
 
     companion object {
         private const val MAX_IMAGES_PER_ARTICLE = 30
+
+        /**
+         * Lets the reader read a *third-party* image's pixels back off a canvas:
+         * to decide whether an image is a bright screenshot worth inverting on a
+         * dark theme it loads a second, CORS-mode copy purely to measure, and
+         * without this header that read is a tainted-canvas SecurityError.
+         *
+         * Deliberately not sent on responses we put the user's token on. Those
+         * are the server's own assets, and the reader document is loaded with
+         * the server as its base URL — so they are already same-origin and
+         * canvas-readable, and there is nothing to gain from making
+         * authenticated bytes script-readable to anything else on the page.
+         */
+        private val CORS_HEADERS = mapOf("Access-Control-Allow-Origin" to "*")
     }
 }

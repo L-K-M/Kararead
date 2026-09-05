@@ -1,0 +1,106 @@
+package ch.lkmc.kararead.reader
+
+/**
+ * What a sample of one article image looks like, measured in the reader's
+ * WebView (canvas) and handed to [ImageTone] over the JS bridge.
+ *
+ * Every fraction is over the sampled pixels, 0..1. The sampler composites the
+ * image over **white** first, so a transparent PNG of dark line art — the case
+ * that goes completely invisible on a dark page — reads as ink on paper.
+ */
+data class ImageToneStats(
+    /** Pixels at or above [ImageTone.LIGHT_LEVEL] luminance: the "paper". */
+    val lightFraction: Double,
+    /** Pixels at or below [ImageTone.DARK_LEVEL] luminance: the "ink". */
+    val darkFraction: Double,
+    /** Mean HSV saturation (0 = greyscale). */
+    val meanSaturation: Double,
+    /** Pixels whose saturation exceeds [ImageTone.VIVID_SATURATION]. */
+    val vividFraction: Double,
+    /** Light pixels along a ring just inside the edge — the margin around the content. */
+    val borderLightFraction: Double,
+    /** Largest share of pixels falling in any one 16-level luminance band. */
+    val peakFraction: Double,
+    /** Centre luminance (0..255) of that band. */
+    val peakLevel: Int,
+    /** How many pixels were sampled. */
+    val samples: Int,
+)
+
+/**
+ * Decides whether an article image is a *bright document* — a screenshot of
+ * text, a diagram, a chart, line art on white — that should be flipped to
+ * light-on-dark so it sits in a dark reader page instead of glaring out of it.
+ * Photographs, artwork and images that are already dark must be left alone.
+ *
+ * The judgement is deliberately a pure function of [ImageToneStats] so a JVM
+ * unit test can reach it; the WebView side only samples pixels and reports
+ * these numbers (see `ReaderHtmlBuilder.imageToneScript`).
+ *
+ * Three signals do the work, and an image has to satisfy all of them:
+ *
+ * 1. **Bright** — mostly paper, with enough ink on it to be worth reading
+ *    ([lightFraction][ImageToneStats.lightFraction], [darkFraction][ImageToneStats.darkFraction]).
+ * 2. **Bimodal** — ink and paper with little in between. A photograph is
+ *    continuous tone and fails here even when it is bright overall.
+ * 3. **Flat** — one dominant, near-uniform light level
+ *    ([peakFraction][ImageToneStats.peakFraction]). A snowy landscape is bright
+ *    and lowish-contrast but its luminance is spread across the whole range;
+ *    a screenshot's background is a single value.
+ *
+ * Saturation guards the remaining case — a bright, flat, high-contrast *colour*
+ * graphic (an infographic, a poster) that inverting would only disfigure.
+ */
+object ImageTone {
+
+    /** Luminance (0..255) at or above which a pixel counts as paper. */
+    const val LIGHT_LEVEL = 200
+
+    /** Luminance at or below which a pixel counts as ink. */
+    const val DARK_LEVEL = 96
+
+    /** HSV saturation above which a pixel counts as vividly coloured. */
+    const val VIVID_SATURATION = 0.45
+
+    /** Below this many sampled pixels the fractions are too noisy to trust. */
+    const val MIN_SAMPLES = 1024
+
+    // The paper has to dominate, but not to the point of being blank: an image
+    // with no ink gains nothing from being flipped, and a light-ink-on-alpha
+    // graphic (already made for dark backgrounds) would be ruined by it.
+    private const val MIN_LIGHT = 0.55
+    private const val MIN_DARK = 0.015
+    private const val MAX_DARK = 0.45
+
+    // Mid-tones are the tell-tale of a photograph. In a screenshot they only
+    // come from antialiasing along glyph edges, which stays well under this.
+    private const val MAX_MID = 0.25
+
+    // One flat light level has to account for a good chunk of the image.
+    private const val MIN_PEAK = 0.30
+
+    // Colour guards: a screenshot may carry a coloured toolbar or syntax
+    // highlighting, but a colour *graphic* should be left as its designer drew it.
+    private const val MAX_MEAN_SATURATION = 0.12
+    private const val MAX_VIVID = 0.15
+
+    // A bright panel inside a dark frame (a letterboxed still, a dark-themed
+    // screenshot with a white content pane) would invert into a glaring white
+    // border, so the margin has to be bright too.
+    private const val MIN_BORDER_LIGHT = 0.60
+
+    /** True when [stats] describe a bright document worth flipping for a dark page. */
+    fun shouldInvert(stats: ImageToneStats): Boolean {
+        if (stats.samples < MIN_SAMPLES) return false
+        val mid = (1.0 - stats.lightFraction - stats.darkFraction).coerceAtLeast(0.0)
+        return stats.lightFraction >= MIN_LIGHT &&
+            stats.darkFraction >= MIN_DARK &&
+            stats.darkFraction <= MAX_DARK &&
+            mid <= MAX_MID &&
+            stats.peakFraction >= MIN_PEAK &&
+            stats.peakLevel >= LIGHT_LEVEL &&
+            stats.meanSaturation <= MAX_MEAN_SATURATION &&
+            stats.vividFraction <= MAX_VIVID &&
+            stats.borderLightFraction >= MIN_BORDER_LIGHT
+    }
+}

@@ -29,6 +29,14 @@ data class ReaderPalette(
     val highlight: String,
     /** "dark" or "light" — drives the WebView's color-scheme & scrollbar. */
     val scheme: String,
+    /**
+     * How hard to flip a bright image on this theme (a CSS `invert()` amount).
+     * Chosen so pure white lands on [background]: `invert(a)` maps white to
+     * `1 - a`, so 0.9 turns #ffffff into #1a1a1a and an inverted screenshot
+     * blends into the page instead of punching a black hole in it. "0" on the
+     * light themes, which never invert anything.
+     */
+    val imageInvert: String,
 )
 
 object ReaderHtmlBuilder {
@@ -43,7 +51,7 @@ object ReaderHtmlBuilder {
             background = "#fdfdfb", surface = "#f3f3ee", text = "#1b1b1b",
             secondary = "#6b6b6b", link = "#1565c0", border = "#e3e3dd",
             codeBg = "#f0f0ea", highlight = "rgba(255, 213, 79, 0.55)",
-            scheme = "light",
+            scheme = "light", imageInvert = "0",
         )
         ReaderTheme.SEPIA -> ReaderPalette(
             background = "#f4ecd8", surface = "#ece1c7", text = "#4a3f35",
@@ -51,7 +59,7 @@ object ReaderHtmlBuilder {
             // sepia background — the secondary color styles whole blockquotes.
             secondary = "#6f6049", link = "#9a5b2b", border = "#ddd0b3",
             codeBg = "#e9ddc2", highlight = "rgba(255, 213, 79, 0.55)",
-            scheme = "light",
+            scheme = "light", imageInvert = "0",
         )
         ReaderTheme.DARK -> ReaderPalette(
             background = "#1a1a1a", surface = "#262626", text = "#d8d4cc",
@@ -59,13 +67,13 @@ object ReaderHtmlBuilder {
             // Dimmer amber for dark themes: a 55% wash under light text drops
             // contrast to ~2.6:1; ~25% keeps the marked text clearly readable.
             codeBg = "#222222", highlight = "rgba(255, 213, 79, 0.26)",
-            scheme = "dark",
+            scheme = "dark", imageInvert = "0.9",
         )
         ReaderTheme.BLACK -> ReaderPalette(
             background = "#000000", surface = "#101010", text = "#cbc7bf",
             secondary = "#8a857c", link = "#82b1e6", border = "#222222",
             codeBg = "#0c0c0c", highlight = "rgba(255, 213, 79, 0.22)",
-            scheme = "dark",
+            scheme = "dark", imageInvert = "1",
         )
     }
 
@@ -170,6 +178,7 @@ ${variableCss(palette, prefs, safeTopPx, systemFontScale)}
   <footer class="kr-footer">— end —</footer>
 </div>
 ${progressScript()}
+${imageToneScript(invertsImages(palette, prefs))}
 </body>
 </html>
         """.trimIndent()
@@ -216,6 +225,7 @@ ${progressScript()}
   --kr-line-height: ${prefs.lineHeight};
   --kr-margin: ${prefs.horizontalMargin}px;
   --kr-align: ${if (prefs.justify) "justify" else "start"};
+  --kr-img-invert: ${palette.imageInvert};
   color-scheme: ${palette.scheme};
 }
         """.trimIndent()
@@ -243,10 +253,193 @@ ${progressScript()}
   r.setProperty('--kr-line-height', '${prefs.lineHeight}');
   r.setProperty('--kr-margin', '${prefs.horizontalMargin}px');
   r.setProperty('--kr-align', '${if (prefs.justify) "justify" else "start"}');
+  r.setProperty('--kr-img-invert', '${palette.imageInvert}');
   document.documentElement.style.colorScheme = '${palette.scheme}';
+  // Theme and toggle both live here, so switching to Dark mid-article starts
+  // the (cached, idempotent) image scan without rebuilding the document.
+  if (window.krApplyImageInvert) window.krApplyImageInvert(${invertsImages(palette, prefs)});
 })();
         """.trimIndent()
     }
+
+    /**
+     * True when this theme + preference combination should flip bright images.
+     * Only the dark themes have anything to gain, so the light ones never pay
+     * for the sampling pass.
+     */
+    private fun invertsImages(palette: ReaderPalette, prefs: ReaderPreferences): Boolean =
+        prefs.invertBrightImages && palette.scheme == "dark"
+
+    /**
+     * Finds the article's bright documents — screenshots of text, diagrams,
+     * line art on white — and marks them `.kr-bright` so the stylesheet can
+     * flip them for a dark page.
+     *
+     * The sampling happens here because pixels only exist in the renderer; the
+     * *judgement* is [ImageTone.shouldInvert] on the Kotlin side, reached
+     * through the `AndroidReader` bridge, so it stays unit-testable and there is
+     * one set of thresholds rather than two. An image whose pixels can't be read
+     * (a cross-origin canvas the CORS probe can't rescue, a decode failure) is
+     * simply left alone — never hidden, never half-drawn.
+     */
+    private fun imageToneScript(initiallyOn: Boolean): String = """
+<script>
+(function(){
+  var LIGHT = ${ImageTone.LIGHT_LEVEL}, DARK = ${ImageTone.DARK_LEVEL};
+  var VIVID = ${ImageTone.VIVID_SATURATION};
+  // Sampled pixels per image. 16k is plenty to measure a distribution and
+  // costs well under a millisecond to walk.
+  var BUDGET = 16384;
+  // Icons, spacers, tracking pixels and inline glyphs are not documents.
+  var MIN_SIDE = 32, MIN_AREA = 4096;
+  // A hard stop so a pathological article can't spend the whole frame budget.
+  var MAX_IMAGES = 40;
+  var on = false, judged = 0;
+
+  // Fraction of a ring just inside the edge that is light. The inset skips the
+  // hairline border and drop shadow most screenshots are saved with, which
+  // would otherwise read as a dark frame.
+  function borderLight(d, cw, ch){
+    var inset = Math.max(1, Math.round(Math.min(cw, ch) * 0.04));
+    if (inset * 2 + 1 >= Math.min(cw, ch)) inset = 0;
+    var lo = inset, hiX = cw - 1 - inset, hiY = ch - 1 - inset;
+    var light = 0, n = 0;
+    function at(x, y){
+      var lum = lumAt(d, (y * cw + x) * 4);
+      if (lum >= LIGHT) light++;
+      n++;
+    }
+    for (var x = lo; x <= hiX; x++){ at(x, lo); at(x, hiY); }
+    for (var y = lo + 1; y < hiY; y++){ at(lo, y); at(hiX, y); }
+    return n ? light / n : 0;
+  }
+
+  function lumAt(d, o){
+    // Rec. 601 luma on the gamma-encoded bytes, which is what "looks bright"
+    // means here; the shift keeps it integer.
+    return (d[o] * 77 + d[o + 1] * 151 + d[o + 2] * 28) >> 8;
+  }
+
+  // Returns null when the image is too small to judge; throws if the canvas is
+  // tainted, which the caller answers with a CORS probe.
+  function measure(img){
+    var w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h || w < MIN_SIDE || h < MIN_SIDE || w * h < MIN_AREA) return null;
+    var scale = Math.min(1, Math.sqrt(BUDGET / (w * h)));
+    var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = cw; canvas.height = ch;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    // Composite over white: a transparent PNG of dark line art is the case that
+    // vanishes completely on a dark page, and sampling it over paper is what
+    // gets it flipped into view.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cw, ch);
+    // Nearest-neighbour, not averaging: smoothing would blend black text into
+    // grey and hide the very bimodality we are looking for.
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0, cw, ch);
+    var d = ctx.getImageData(0, 0, cw, ch).data;
+    var n = cw * ch, light = 0, dark = 0, vivid = 0, satSum = 0;
+    var hist = [], b;
+    for (b = 0; b < 32; b++) hist[b] = 0;
+    for (var i = 0; i < n; i++){
+      var o = i * 4, r = d[o], g = d[o + 1], bl = d[o + 2];
+      var lum = lumAt(d, o);
+      if (lum >= LIGHT) light++; else if (lum <= DARK) dark++;
+      var mx = r > g ? (r > bl ? r : bl) : (g > bl ? g : bl);
+      var mn = r < g ? (r < bl ? r : bl) : (g < bl ? g : bl);
+      var sat = mx === 0 ? 0 : (mx - mn) / mx;
+      satSum += sat;
+      if (sat > VIVID) vivid++;
+      hist[lum >> 3]++;
+    }
+    // The dominant level, measured over two adjacent 8-level buckets so JPEG
+    // noise around a flat background still reads as one peak.
+    var peak = 0, peakBand = 0;
+    for (b = 0; b < 31; b++){
+      var band = hist[b] + hist[b + 1];
+      if (band > peak){ peak = band; peakBand = b; }
+    }
+    return {
+      light: light / n, dark: dark / n,
+      sat: satSum / n, vivid: vivid / n,
+      border: borderLight(d, cw, ch),
+      peak: peak / n, peakLevel: peakBand * 8 + 8,
+      samples: n
+    };
+  }
+
+  function finish(img, s){
+    var bright = false;
+    if (s && window.AndroidReader && window.AndroidReader.shouldInvertImage){
+      try {
+        bright = !!window.AndroidReader.shouldInvertImage(
+          s.light, s.dark, s.sat, s.vivid, s.border, s.peak, s.peakLevel, s.samples);
+      } catch (e) { bright = false; }
+    }
+    img.setAttribute('data-kr-tone', bright ? 'bright' : 'plain');
+    if (bright) img.classList.add('kr-bright');
+  }
+
+  function judge(img){
+    if (judged >= MAX_IMAGES) return;
+    judged++;
+    img.setAttribute('data-kr-tone', 'pending');
+    try {
+      finish(img, measure(img));
+      return;
+    } catch (e) { /* tainted canvas — try again through CORS */ }
+    // The displayed image stays exactly as it is; this second, CORS-mode load
+    // exists only to be readable, and is served from the same cache. If it
+    // fails we simply never invert.
+    var probe = new Image();
+    probe.crossOrigin = 'anonymous';
+    probe.onload = function(){
+      var s = null;
+      try { s = measure(probe); } catch (e2) { s = null; }
+      // Drop the second decode straight away: on an article full of
+      // screenshots, holding 40 of them would be a real memory bill.
+      probe.src = '';
+      finish(img, s);
+    };
+    probe.onerror = function(){ finish(img, null); };
+    probe.src = img.currentSrc || img.src;
+  }
+
+  function scan(){
+    if (!on) return;
+    var imgs = document.querySelectorAll('#kr-content img');
+    for (var i = 0; i < imgs.length; i++){
+      var img = imgs[i];
+      if (img.getAttribute('data-kr-tone')) continue;
+      if (img.complete && img.naturalWidth){ judge(img); continue; }
+      if (img.getAttribute('data-kr-bound')) continue;
+      img.setAttribute('data-kr-bound', '1');
+      img.addEventListener('load', (function(el){
+        return function(){ if (on && !el.getAttribute('data-kr-tone')) judge(el); };
+      })(img));
+    }
+  }
+
+  // Called on every preference/theme change, so a mid-article switch to Dark
+  // flips the images that are already on screen. Verdicts are cached on the
+  // element, so turning it off and on again costs nothing.
+  window.krApplyImageInvert = function(enable){
+    on = !!enable;
+    document.documentElement.classList.toggle('kr-invert-images', on);
+    if (on) scan();
+  };
+
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', scan);
+  }
+  window.addEventListener('load', scan);
+  window.krApplyImageInvert(${initiallyOn});
+})();
+</script>
+    """.trimIndent()
 
     /**
      * @font-face for the bundled reading typefaces. Served by [AssetLoader] via
@@ -326,6 +519,17 @@ body {
 .kr-article h2 { font-size: 1.35em; }
 .kr-article h3 { font-size: 1.15em; }
 .kr-article img, .kr-article video { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 1.2em auto; }
+/* Bright documents — screenshots of text, diagrams, line art on white — flipped
+   to light-on-dark so they belong to the page instead of glaring out of it.
+   ImageTone picks which images get .kr-bright; the root class means the light
+   themes never composite a filter at all. The invert amount is per-theme, so an
+   inverted white page lands exactly on the page background rather than punching
+   a black hole in it. hue-rotate() is a no-op on a plain black-on-white shot; it
+   earns its place on coloured ones (syntax highlighting, a chart), where bare
+   inversion would turn red into teal. */
+html.kr-invert-images .kr-article img.kr-bright {
+  filter: invert(var(--kr-img-invert, 1)) hue-rotate(180deg);
+}
 .kr-article figure { margin: 1.4em 0; }
 .kr-article figcaption { color: var(--kr-secondary); font-size: .8em; text-align: center; margin-top: .5em; }
 .kr-article blockquote {

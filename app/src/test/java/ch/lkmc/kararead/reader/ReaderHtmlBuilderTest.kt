@@ -301,4 +301,72 @@ class ReaderHtmlBuilderTest {
         assertTrue(out.contains("--kr-hl:"))
         assertTrue(out.contains("background: var(--kr-hl"))
     }
+
+    @Test
+    fun `image inversion is armed only on the dark themes`() {
+        fun scanArmed(theme: ReaderTheme, invert: Boolean = true) = ReaderHtmlBuilder.build(
+            article("<p>x</p>"),
+            ReaderPreferences(theme = theme, invertBrightImages = invert),
+        ).contains("krApplyImageInvert(true)")
+
+        assertTrue(scanArmed(ReaderTheme.DARK))
+        assertTrue(scanArmed(ReaderTheme.BLACK))
+        assertFalse(scanArmed(ReaderTheme.LIGHT))
+        assertFalse(scanArmed(ReaderTheme.SEPIA))
+        // …and never when the reader has been told not to.
+        assertFalse(scanArmed(ReaderTheme.DARK, invert = false))
+    }
+
+    @Test
+    fun `invert strength lands an inverted white on the page background`() {
+        // invert(a) maps white to 1-a, so the amount is chosen per theme to put
+        // a screenshot's paper exactly on the page instead of punching a black
+        // hole in it: 0.9 -> #1a1a1a for Dark, 1 -> #000000 for Black.
+        assertEquals("0.9", ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK).imageInvert)
+        assertEquals("1", ReaderHtmlBuilder.paletteFor(ReaderTheme.BLACK).imageInvert)
+        assertEquals("0", ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT).imageInvert)
+        assertEquals("0", ReaderHtmlBuilder.paletteFor(ReaderTheme.SEPIA).imageInvert)
+
+        val css = ReaderHtmlBuilder.variableCss(
+            ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK), ReaderPreferences(),
+        )
+        assertTrue(css.contains("--kr-img-invert: 0.9"))
+    }
+
+    @Test
+    fun `the inversion filter only applies under the root class`() {
+        // Light themes must not composite a filter at all, so the rule is gated
+        // on a class the script only sets when inversion is on.
+        val out = ReaderHtmlBuilder.build(
+            article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
+        )
+        assertTrue(out.contains("html.kr-invert-images .kr-article img.kr-bright"))
+        assertTrue(out.contains("filter: invert(var(--kr-img-invert, 1)) hue-rotate(180deg)"))
+    }
+
+    @Test
+    fun `a preference change re-applies the image inversion without a reload`() {
+        val dark = ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK)
+        val on = ReaderHtmlBuilder.applyPrefsScript(
+            dark, ReaderPreferences(theme = ReaderTheme.DARK, invertBrightImages = true),
+        )
+        assertTrue(on.contains("krApplyImageInvert(true)"))
+        assertTrue(on.contains("'--kr-img-invert', '0.9'"))
+
+        val off = ReaderHtmlBuilder.applyPrefsScript(
+            dark, ReaderPreferences(theme = ReaderTheme.DARK, invertBrightImages = false),
+        )
+        assertTrue(off.contains("krApplyImageInvert(false)"))
+    }
+
+    @Test
+    fun `the tone sampler and the Kotlin judge share one set of thresholds`() {
+        // The page measures pixels, ImageTone judges them — so the levels the
+        // sampler counts against have to be the ones the judge was tuned for.
+        val out = ReaderHtmlBuilder.build(
+            article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
+        )
+        assertTrue(out.contains("var LIGHT = ${ImageTone.LIGHT_LEVEL}, DARK = ${ImageTone.DARK_LEVEL};"))
+        assertTrue(out.contains("var VIVID = ${ImageTone.VIVID_SATURATION};"))
+    }
 }

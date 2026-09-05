@@ -24,6 +24,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import ch.lkmc.kararead.data.model.ReaderArticle
 import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.reader.AssetLoader
+import ch.lkmc.kararead.reader.ImageTone
+import ch.lkmc.kararead.reader.ImageToneStats
 import ch.lkmc.kararead.reader.ReaderHtmlBuilder
 
 /** Height of the (Material 3 small) top app bar overlaid on the article, in dp. */
@@ -526,4 +528,33 @@ internal class ReaderBridge(
     fun onHighlightTap(id: String) {
         mainHandler.post { emitHighlightTap(id) }
     }
+
+    /**
+     * Judges one article image from the statistics the page sampled for it.
+     * Unlike the rest of the bridge this answers synchronously — it is a pure
+     * arithmetic call ([ImageTone.shouldInvert]) with no state to touch, and
+     * the page needs the verdict before it can paint the image.
+     */
+    @JavascriptInterface
+    fun shouldInvertImage(
+        lightFraction: Double,
+        darkFraction: Double,
+        meanSaturation: Double,
+        vividFraction: Double,
+        borderLightFraction: Double,
+        peakFraction: Double,
+        peakLevel: Int,
+        samples: Int,
+    ): Boolean = ImageTone.shouldInvert(
+        ImageToneStats(
+            lightFraction = lightFraction,
+            darkFraction = darkFraction,
+            meanSaturation = meanSaturation,
+            vividFraction = vividFraction,
+            borderLightFraction = borderLightFraction,
+            peakFraction = peakFraction,
+            peakLevel = peakLevel,
+            samples = samples,
+        ),
+    )
 }
