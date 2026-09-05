@@ -336,7 +336,9 @@ ${imageToneScript(invertsImages(palette, prefs))}
     var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
     var canvas = document.createElement('canvas');
     canvas.width = cw; canvas.height = ch;
-    var ctx = canvas.getContext('2d');
+    // Readback-only: never in the DOM, never painted. Asking for the CPU
+    // backing store spares up to MAX_IMAGES GPU round trips per article.
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
     // Composite over white: a transparent PNG of dark line art is the case that
     // vanishes completely on a dark page, and sampling it over paper is what
@@ -392,7 +394,12 @@ ${imageToneScript(invertsImages(palette, prefs))}
         bright = !!window.AndroidReader.shouldInvertImage(
           s.light, s.dark, s.sat, s.vivid, s.border, s.peak, s.peakLevel,
           s.colors, s.samples);
-      } catch (e) { bright = false; }
+      } catch (e) {
+        // Cached as 'plain' below, so a broken bridge would disable the feature
+        // for the session without a trace. Leave one.
+        bright = false;
+        if (window.console && console.warn) console.warn('kr: image tone bridge failed', e);
+      }
     }
     img.setAttribute('data-kr-tone', bright ? 'bright' : 'plain');
     if (bright) img.classList.add('kr-bright');
@@ -415,8 +422,12 @@ ${imageToneScript(invertsImages(palette, prefs))}
       var s = null;
       try { s = measure(probe); } catch (e2) { s = null; }
       // Drop the second decode straight away: on an article full of
-      // screenshots, holding 40 of them would be a real memory bill.
-      probe.src = '';
+      // screenshots, holding 40 of them would be a real memory bill. Detach
+      // first — replacing the src fires an error at the handler still on it,
+      // which would come back through finish() and overwrite the verdict
+      // written on the next line.
+      probe.onload = probe.onerror = null;
+      probe.src = 'data:,';
       finish(img, s);
     };
     probe.onerror = function(){ finish(img, null); };

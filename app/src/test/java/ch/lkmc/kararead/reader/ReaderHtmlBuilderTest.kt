@@ -315,6 +315,7 @@ class ReaderHtmlBuilderTest {
         assertFalse(scanArmed(ReaderTheme.SEPIA))
         // …and never when the reader has been told not to.
         assertFalse(scanArmed(ReaderTheme.DARK, invert = false))
+        assertFalse(scanArmed(ReaderTheme.BLACK, invert = false))
     }
 
     @Test
@@ -328,7 +329,8 @@ class ReaderHtmlBuilderTest {
         assertEquals("0", ReaderHtmlBuilder.paletteFor(ReaderTheme.SEPIA).imageInvert)
 
         val css = ReaderHtmlBuilder.variableCss(
-            ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK), ReaderPreferences(),
+            ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK),
+            ReaderPreferences(theme = ReaderTheme.DARK),
         )
         assertTrue(css.contains("--kr-img-invert: 0.9"))
     }
@@ -366,7 +368,31 @@ class ReaderHtmlBuilderTest {
         val out = ReaderHtmlBuilder.build(
             article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
         )
-        assertTrue(out.contains("var LIGHT = ${ImageTone.LIGHT_LEVEL}, DARK = ${ImageTone.DARK_LEVEL};"))
-        assertTrue(out.contains("var VIVID = ${ImageTone.VIVID_SATURATION};"))
+        // Asserted per constant rather than per line, so reformatting the
+        // embedded JS can't break a test that is about the shared numbers.
+        assertTrue(out.contains("LIGHT = ${ImageTone.LIGHT_LEVEL}"))
+        assertTrue(out.contains("DARK = ${ImageTone.DARK_LEVEL}"))
+        assertTrue(out.contains("VIVID = ${ImageTone.VIVID_SATURATION}"))
+        assertTrue(out.contains("BUCKET_BITS = ${ImageTone.COLOR_BUCKET_BITS}"))
+    }
+
+    @Test
+    fun `the sampler hands the bridge its arguments in the declared order`() {
+        // The page calls ReaderBridge.shouldInvertImage positionally, and a JS
+        // string has no compile-time link to a Kotlin signature: swap two of
+        // these and every image is misjudged with nothing failing. Pin the
+        // order here, whitespace-insensitively, so a reorder on either side has
+        // to come past a red test.
+        val out = ReaderHtmlBuilder.build(
+            article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
+        )
+        val call = out.substringAfter("shouldInvertImage(")
+            .substringBefore(")")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        assertEquals(
+            "s.light, s.dark, s.sat, s.vivid, s.border, s.peak, s.peakLevel, s.colors, s.samples",
+            call,
+        )
     }
 }

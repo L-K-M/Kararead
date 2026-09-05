@@ -534,6 +534,11 @@ internal class ReaderBridge(
      * Unlike the rest of the bridge this answers synchronously — it is a pure
      * arithmetic call ([ImageTone.shouldInvert]) with no state to touch, and
      * the page needs the verdict before it can paint the image.
+     *
+     * The single caller is the `shouldInvertImage(...)` line in
+     * `ReaderHtmlBuilder.imageToneScript`, and the arguments are positional, so
+     * the two lists have to stay in step; a test pins the JS side's order
+     * against this signature.
      */
     @JavascriptInterface
     fun shouldInvertImage(

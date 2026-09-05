@@ -156,9 +156,13 @@ fun ReaderControlsSheet(
                 )
 
                 ToggleRow("Justify text", prefs.justify, onJustify)
-                // Only bites on the dark themes, where a white screenshot would
-                // otherwise glare out of the page.
-                ToggleRow("Invert bright images", prefs.invertBrightImages, onInvertBrightImages)
+                // Scope is in the label: a switch that does nothing on the theme
+                // you are looking at should say so rather than look broken.
+                ToggleRow(
+                    "Invert bright images (dark themes)",
+                    prefs.invertBrightImages,
+                    onInvertBrightImages,
+                )
                 ToggleRow("Keep screen on", prefs.keepScreenOn, onKeepScreenOn)
                 ToggleRow("Volume keys turn pages", prefs.volumeKeyPaging, onVolumeKeyPaging)
                 Spacer(Modifier.height(8.dp))
