@@ -25,7 +25,7 @@ library — an independent, unofficial client. Product rationale and roadmap liv
 ## Build / test / lint
 
 ```bash
-./gradlew testDebugUnitTest    # unit tests (12 files: data/remote, data/repository, reader, tts, util)
+./gradlew testDebugUnitTest    # unit tests (13 files: data/remote, data/repository, reader, tts, util)
 ./gradlew lintDebug            # Android lint — a CI gate, keep it clean
 ./gradlew assembleDebug        # debug APK
 scripts/install.sh             # build + adb install + launch the debug build on a device

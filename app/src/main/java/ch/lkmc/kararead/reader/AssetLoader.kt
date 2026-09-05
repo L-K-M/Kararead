@@ -153,6 +153,8 @@ class AssetLoader @Inject constructor(
          * the server as its base URL — so they are already same-origin and
          * canvas-readable, and there is nothing to gain from making
          * authenticated bytes script-readable to anything else on the page.
+         * (With no server configured the document has an opaque origin and
+         * nothing is readable; inversion then simply never happens.)
          */
         private val CORS_HEADERS = mapOf("Access-Control-Allow-Origin" to "*")
     }

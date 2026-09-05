@@ -290,7 +290,6 @@ ${imageToneScript(invertsImages(palette, prefs))}
   // Sampled pixels per image. 16k is plenty to measure a distribution and
   // costs well under a millisecond to walk.
   var BUDGET = 16384;
-  // Icons, spacers, tracking pixels and inline glyphs are not documents.
   var MIN_SIDE = 32, MIN_AREA = 4096;
   // A hard stop so a pathological article can't spend the whole frame budget.
   var MAX_IMAGES = 40;
@@ -320,11 +319,17 @@ ${imageToneScript(invertsImages(palette, prefs))}
     return (d[o] * 77 + d[o + 1] * 151 + d[o + 2] * 28) >> 8;
   }
 
+  // Icons, spacers, tracking pixels and inline glyphs are not documents.
+  function tooSmall(img){
+    var w = img.naturalWidth, h = img.naturalHeight;
+    return !w || !h || w < MIN_SIDE || h < MIN_SIDE || w * h < MIN_AREA;
+  }
+
   // Returns null when the image is too small to judge; throws if the canvas is
   // tainted, which the caller answers with a CORS probe.
   function measure(img){
+    if (tooSmall(img)) return null;
     var w = img.naturalWidth, h = img.naturalHeight;
-    if (!w || !h || w < MIN_SIDE || h < MIN_SIDE || w * h < MIN_AREA) return null;
     var scale = Math.min(1, Math.sqrt(BUDGET / (w * h)));
     var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
     var canvas = document.createElement('canvas');
@@ -414,7 +419,13 @@ ${imageToneScript(invertsImages(palette, prefs))}
     for (var i = 0; i < imgs.length; i++){
       var img = imgs[i];
       if (img.getAttribute('data-kr-tone')) continue;
-      if (img.complete && img.naturalWidth){ judge(img); continue; }
+      if (img.complete && img.naturalWidth){
+        // Settled without spending any of the budget: an article that opens
+        // with a row of icons must still reach the screenshot below them.
+        if (tooSmall(img)) { img.setAttribute('data-kr-tone', 'plain'); continue; }
+        judge(img);
+        continue;
+      }
       if (img.getAttribute('data-kr-bound')) continue;
       img.setAttribute('data-kr-bound', '1');
       img.addEventListener('load', (function(el){
