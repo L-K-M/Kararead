@@ -117,7 +117,7 @@ class AssetLoader @Inject constructor(
             // one — and OkHttp reports an empty reason phrase for every HTTP/2
             // response. That throw would be swallowed by intercept()'s catch and
             // every image would quietly lose its bearer auth.
-            if (response.request.header("Authorization") == null && mime.startsWith("image/")) {
+            if (response.request.header("Authorization") == null && mime.startsWith("image/", ignoreCase = true)) {
                 setResponseHeaders(CORS_HEADERS)
             }
         }

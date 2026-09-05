@@ -409,10 +409,24 @@ ${imageToneScript(invertsImages(palette, prefs))}
     if (judged >= MAX_IMAGES) return;
     judged++;
     img.setAttribute('data-kr-tone', 'pending');
+    var direct = null;
     try {
-      finish(img, measure(img));
+      direct = measure(img);
+    } catch (e) {
+      // A tainted canvas is the one error worth a second fetch over, and
+      // getImageData reports it as exactly this. Anything else is a bug here,
+      // not a permissions problem — say so rather than spend a download on it.
+      if (!e || e.name !== 'SecurityError') {
+        if (window.console && console.warn) console.warn('kr: image tone sampling failed', e);
+        finish(img, null);
+        return;
+      }
+      direct = undefined; // fall through to the CORS probe below
+    }
+    if (direct !== undefined) {
+      finish(img, direct);
       return;
-    } catch (e) { /* tainted canvas — try again through CORS */ }
+    }
     // The displayed image stays exactly as it is; this second, CORS-mode load
     // exists only to be readable, and is served from the same cache. If it
     // fails we simply never invert.
@@ -436,7 +450,9 @@ ${imageToneScript(invertsImages(palette, prefs))}
 
   function scan(){
     if (!on) return;
-    var imgs = document.querySelectorAll('#kr-content img');
+    // The same subtree the stylesheet's .kr-bright rule is scoped to, so an
+    // image can't be sampled and tagged where no filter could reach it.
+    var imgs = document.querySelectorAll('.kr-article img');
     for (var i = 0; i < imgs.length; i++){
       var img = imgs[i];
       if (img.getAttribute('data-kr-tone')) continue;

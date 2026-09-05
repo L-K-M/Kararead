@@ -66,7 +66,15 @@ data class ImageToneStats(
  */
 object ImageTone {
 
-    /** Luminance (0..255) at or above which a pixel counts as paper. */
+    /**
+     * Luminance (0..255) at or above which a pixel counts as paper.
+     *
+     * Keep it a multiple of 8, the sampler's bucket width. The peak band is
+     * reported as `floor(level / 8) * 8` or one bucket above it, so a paper
+     * level at or above a multiple-of-8 threshold can never round down past it
+     * — which is what lets [shouldInvert] test `peakLevel` and `lightFraction`
+     * against the same number without a boundary between them.
+     */
     const val LIGHT_LEVEL = 200
 
     /** Luminance at or below which a pixel counts as ink. */

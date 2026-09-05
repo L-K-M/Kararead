@@ -368,30 +368,39 @@ class ReaderHtmlBuilderTest {
         val out = ReaderHtmlBuilder.build(
             article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
         )
-        // Asserted per constant rather than per line, so reformatting the
-        // embedded JS can't break a test that is about the shared numbers.
-        assertTrue(out.contains("LIGHT = ${ImageTone.LIGHT_LEVEL}"))
-        assertTrue(out.contains("DARK = ${ImageTone.DARK_LEVEL}"))
-        assertTrue(out.contains("VIVID = ${ImageTone.VIVID_SATURATION}"))
-        assertTrue(out.contains("BUCKET_BITS = ${ImageTone.COLOR_BUCKET_BITS}"))
+        // Anchored per constant rather than matched as a line: reformatting the
+        // embedded JS mustn't break a test that is about the shared numbers, and
+        // a bare substring would take `DARK = 96` out of `PEAK_DARK = 964`.
+        fun pinned(name: String, value: Any) = assertTrue(
+            "expected JS constant $name = $value",
+            Regex("(?<![A-Za-z0-9_])$name\\s*=\\s*${Regex.escape(value.toString())}(?![0-9.])")
+                .containsMatchIn(out),
+        )
+        pinned("LIGHT", ImageTone.LIGHT_LEVEL)
+        pinned("DARK", ImageTone.DARK_LEVEL)
+        pinned("VIVID", ImageTone.VIVID_SATURATION)
+        pinned("BUCKET_BITS", ImageTone.COLOR_BUCKET_BITS)
     }
 
     @Test
     fun `the sampler hands the bridge its arguments in the declared order`() {
         // The page calls ReaderBridge.shouldInvertImage positionally, and a JS
         // string has no compile-time link to a Kotlin signature: swap two of
-        // these and every image is misjudged with nothing failing. Pin the
-        // order here, whitespace-insensitively, so a reorder on either side has
-        // to come past a red test.
+        // these and every image is misjudged with nothing failing. This pins the
+        // JS side only — pinning the Kotlin parameter order too would want
+        // kotlin-reflect, which isn't a dependency here, so that half rests on
+        // the cross-reference in the bridge's KDoc.
         val out = ReaderHtmlBuilder.build(
             article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
         )
-        val call = out.substringAfter("shouldInvertImage(")
+        // Anchored on the bound name so the feature-detect mention can't be
+        // picked up instead, and stripped of whitespace entirely so only the
+        // order is under test.
+        val call = out.substringAfter("AndroidReader.shouldInvertImage(")
             .substringBefore(")")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+            .replace(Regex("\\s+"), "")
         assertEquals(
-            "s.light, s.dark, s.sat, s.vivid, s.border, s.peak, s.peakLevel, s.colors, s.samples",
+            "s.light,s.dark,s.sat,s.vivid,s.border,s.peak,s.peakLevel,s.colors,s.samples",
             call,
         )
     }

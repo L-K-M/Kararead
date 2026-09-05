@@ -1,5 +1,6 @@
 package ch.lkmc.kararead.reader
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -115,6 +116,17 @@ class ImageToneTest {
         // Inverting this would turn the frame into a glaring white border —
         // exactly the thing a dark theme is meant to avoid.
         assertFalse(ImageTone.shouldInvert(screenshot(borderLightFraction = 0.05)))
+    }
+
+    @Test
+    fun `light grey paper still reads as paper at the band boundary`() {
+        // The sampler reports the peak as floor(level / 8) * 8, or one bucket
+        // above. A #cccccc page (luminance 204) therefore lands on 200 — the
+        // threshold itself — and must not be rejected for it. This holds only
+        // because LIGHT_LEVEL is a multiple of the 8-level bucket width; move it
+        // off one and light-grey screenshots start being skipped.
+        assertTrue(ImageTone.shouldInvert(screenshot(peakLevel = ImageTone.LIGHT_LEVEL)))
+        assertEquals(0, ImageTone.LIGHT_LEVEL % 8)
     }
 
     @Test
