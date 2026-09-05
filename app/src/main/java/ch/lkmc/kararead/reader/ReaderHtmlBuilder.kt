@@ -286,7 +286,7 @@ ${imageToneScript(invertsImages(palette, prefs))}
 <script>
 (function(){
   var LIGHT = ${ImageTone.LIGHT_LEVEL}, DARK = ${ImageTone.DARK_LEVEL};
-  var VIVID = ${ImageTone.VIVID_SATURATION};
+  var VIVID = ${ImageTone.VIVID_SATURATION}, CHROMA = ${ImageTone.CHROMA_FLOOR};
   var BUCKET_BITS = ${ImageTone.COLOR_BUCKET_BITS};
   var BUCKET_SHIFT = 8 - BUCKET_BITS, BUCKETS = 1 << (3 * BUCKET_BITS);
   // Sampled pixels per image. 16k is plenty to measure a distribution and
@@ -362,7 +362,10 @@ ${imageToneScript(invertsImages(palette, prefs))}
       if (lum >= LIGHT) light++; else if (lum <= DARK) dark++;
       var mx = r > g ? (r > bl ? r : bl) : (g > bl ? g : bl);
       var mn = r < g ? (r < bl ? r : bl) : (g < bl ? g : bl);
-      var sat = mx === 0 ? 0 : (mx - mn) / mx;
+      // Achromatic below the floor: (mx - mn) / mx explodes towards black, and
+      // reading noise in the ink as colour is how a dense screenshot gets
+      // mistaken for a colour graphic.
+      var sat = mx < CHROMA ? 0 : (mx - mn) / mx;
       satSum += sat;
       if (sat > VIVID) vivid++;
       hist[lum >> 3]++;
@@ -406,6 +409,10 @@ ${imageToneScript(invertsImages(palette, prefs))}
   }
 
   function judge(img){
+    // Settled from the size test alone, whether the image was already loaded
+    // when we scanned or arrived later: an article that opens with a row of
+    // icons must still have budget left for the screenshot below them.
+    if (tooSmall(img)) { img.setAttribute('data-kr-tone', 'plain'); return; }
     if (judged >= MAX_IMAGES) return;
     judged++;
     img.setAttribute('data-kr-tone', 'pending');
@@ -456,13 +463,7 @@ ${imageToneScript(invertsImages(palette, prefs))}
     for (var i = 0; i < imgs.length; i++){
       var img = imgs[i];
       if (img.getAttribute('data-kr-tone')) continue;
-      if (img.complete && img.naturalWidth){
-        // Settled without spending any of the budget: an article that opens
-        // with a row of icons must still reach the screenshot below them.
-        if (tooSmall(img)) { img.setAttribute('data-kr-tone', 'plain'); continue; }
-        judge(img);
-        continue;
-      }
+      if (img.complete && img.naturalWidth){ judge(img); continue; }
       if (img.getAttribute('data-kr-bound')) continue;
       img.setAttribute('data-kr-bound', '1');
       img.addEventListener('load', (function(el){

@@ -380,6 +380,7 @@ class ReaderHtmlBuilderTest {
         pinned("DARK", ImageTone.DARK_LEVEL)
         pinned("VIVID", ImageTone.VIVID_SATURATION)
         pinned("BUCKET_BITS", ImageTone.COLOR_BUCKET_BITS)
+        pinned("CHROMA", ImageTone.CHROMA_FLOOR)
     }
 
     @Test

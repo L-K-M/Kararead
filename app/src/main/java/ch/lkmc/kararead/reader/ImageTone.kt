@@ -83,6 +83,18 @@ object ImageTone {
     /** HSV saturation above which a pixel counts as vividly coloured. */
     const val VIVID_SATURATION = 0.45
 
+    /**
+     * Brightest channel below which a pixel is taken as achromatic.
+     *
+     * Saturation is `(max - min) / max`, which blows up as `max` approaches
+     * zero: an ink pixel of rgb(3, 1, 0) — visually black — reads as *fully*
+     * saturated. Ordinary noise in black text therefore piles spurious colour
+     * onto exactly the guards that reject colour graphics, and an ink-dense
+     * screenshot gets thrown out as one. Below this level there is no hue worth
+     * measuring, so there is none.
+     */
+    const val CHROMA_FLOOR = 32
+
     /** Bits per channel the colour buckets are quantised to (16 levels each). */
     const val COLOR_BUCKET_BITS = 4
 
@@ -94,6 +106,9 @@ object ImageTone {
     // graphic (already made for dark backgrounds) would be ruined by it.
     private const val MIN_LIGHT = 0.55
     private const val MIN_DARK = 0.015
+    // Implied by MIN_LIGHT today — the sampler's bins are disjoint, so light and
+    // dark can't sum past 1 — and kept as the independent statement of intent,
+    // which is what would still hold if MIN_LIGHT ever moved.
     private const val MAX_DARK = 0.45
 
     // Mid-tones are the tell-tale of a photograph. In a screenshot they only

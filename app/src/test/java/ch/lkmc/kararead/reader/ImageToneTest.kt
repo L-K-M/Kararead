@@ -104,6 +104,20 @@ class ImageToneTest {
     }
 
     @Test
+    fun `an ink-dense screenshot is not mistaken for a colour graphic`() {
+        // A dense terminal or a bold-text shot is 20-40% ink. Saturation is
+        // (max - min) / max, which explodes towards black, so before the
+        // sampler's chroma floor ordinary noise in that ink read as ~0.7 mean
+        // saturation and pushed both colour guards past their limits — the
+        // feature refusing exactly the screenshots it exists for.
+        assertTrue(
+            ImageTone.shouldInvert(
+                screenshot(lightFraction = 0.60, darkFraction = 0.38, meanSaturation = 0.02),
+            ),
+        )
+    }
+
+    @Test
     fun `a colour graphic is left as its designer drew it`() {
         // A bright, flat, high-contrast infographic passes every structural
         // test; saturation is the only thing standing between it and a ruinous
