@@ -435,13 +435,22 @@ ${imageToneScript(invertsImages(palette, prefs))}
       return;
     }
     // The displayed image stays exactly as it is; this second, CORS-mode load
-    // exists only to be readable, and is served from the same cache. If it
-    // fails we simply never invert.
+    // exists only to be readable. Blink won't reuse the renderer's no-cors
+    // entry for it, but AssetLoader answers both from the same OkHttp disk
+    // cache with byte-identical requests, so it costs a disk read rather than a
+    // download. If it fails we simply never invert.
     var probe = new Image();
     probe.crossOrigin = 'anonymous';
     probe.onload = function(){
       var s = null;
-      try { s = measure(probe); } catch (e2) { s = null; }
+      try {
+        s = measure(probe);
+      } catch (e2) {
+        // The direct and bridge paths both leave a trace; so should the one
+        // that actually fails in the field.
+        if (window.console && console.warn) console.warn('kr: image tone probe sampling failed', e2);
+        s = null;
+      }
       // Drop the second decode straight away: on an article full of
       // screenshots, holding 40 of them would be a real memory bill. Detach
       // first — replacing the src fires an error at the handler still on it,
@@ -451,7 +460,14 @@ ${imageToneScript(invertsImages(palette, prefs))}
       probe.src = 'data:,';
       finish(img, s);
     };
-    probe.onerror = function(){ finish(img, null); };
+    probe.onerror = function(){
+      // Usually an origin that sends no Access-Control-Allow-Origin. Name it:
+      // "why wasn't this screenshot inverted" should be answerable from a log.
+      if (window.console && console.warn) {
+        console.warn('kr: image tone probe blocked', img.currentSrc || img.src);
+      }
+      finish(img, null);
+    };
     probe.src = img.currentSrc || img.src;
   }
 

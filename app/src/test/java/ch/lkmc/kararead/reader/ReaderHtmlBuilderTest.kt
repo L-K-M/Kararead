@@ -332,7 +332,7 @@ class ReaderHtmlBuilderTest {
             ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK),
             ReaderPreferences(theme = ReaderTheme.DARK),
         )
-        assertTrue(css.contains("--kr-img-invert: 0.9"))
+        assertTrue(Regex("--kr-img-invert:\\s*0\\.9(?![0-9])").containsMatchIn(css))
     }
 
     @Test
@@ -359,6 +359,17 @@ class ReaderHtmlBuilderTest {
             dark, ReaderPreferences(theme = ReaderTheme.DARK, invertBrightImages = false),
         )
         assertTrue(off.contains("krApplyImageInvert(false)"))
+
+        // And switching back to a light theme disarms it even with the
+        // preference still on. Worth pinning rather than assuming: the class is
+        // the only thing holding the filter off, and were it left set, the
+        // companion hue-rotate(180deg) would shift the colours of every marked
+        // image on a light page — invert(0) is the no-op, hue-rotate is not.
+        val backToLight = ReaderHtmlBuilder.applyPrefsScript(
+            ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT),
+            ReaderPreferences(theme = ReaderTheme.LIGHT, invertBrightImages = true),
+        )
+        assertTrue(backToLight.contains("krApplyImageInvert(false)"))
     }
 
     @Test
@@ -397,7 +408,7 @@ class ReaderHtmlBuilderTest {
         // Anchored on the bound name so the feature-detect mention can't be
         // picked up instead, and stripped of whitespace entirely so only the
         // order is under test.
-        val call = out.substringAfter("AndroidReader.shouldInvertImage(")
+        val call = out.substringAfter("AndroidReader.shouldInvertImage(", missingDelimiterValue = "")
             .substringBefore(")")
             .replace(Regex("\\s+"), "")
         assertEquals(

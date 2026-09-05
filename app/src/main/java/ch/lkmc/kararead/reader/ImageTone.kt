@@ -19,9 +19,17 @@ data class ImageToneStats(
     val vividFraction: Double,
     /** Light pixels along a ring just inside the edge — the margin around the content. */
     val borderLightFraction: Double,
-    /** Largest share of pixels falling in any one 16-level luminance band. */
+    /**
+     * Largest share of pixels falling in any one 16-level luminance band (two
+     * adjacent 8-level buckets, so noise around a flat colour reads as one peak).
+     */
     val peakFraction: Double,
-    /** Centre luminance (0..255) of that band. */
+    /**
+     * Where that band sits, as the lower edge of its upper bucket: always a
+     * multiple of 8, and for a dominant level L either `floor(L / 8) * 8` or one
+     * bucket above it. Not the band's arithmetic centre — the distinction is
+     * what [ImageTone.LIGHT_LEVEL]'s boundary argument rests on.
+     */
     val peakLevel: Int,
     /**
      * Share of the 4096 quantised colour buckets (4 bits per channel) the image

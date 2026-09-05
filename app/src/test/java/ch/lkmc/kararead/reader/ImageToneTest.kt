@@ -126,6 +126,14 @@ class ImageToneTest {
     }
 
     @Test
+    fun `either colour guard refuses a graphic on its own`() {
+        // The two are alternatives, not a pair: the test above moves both at
+        // once, which would still pass if one of them stopped working.
+        assertFalse(ImageTone.shouldInvert(screenshot(meanSaturation = 0.30)))
+        assertFalse(ImageTone.shouldInvert(screenshot(vividFraction = 0.35)))
+    }
+
+    @Test
     fun `a bright pane inside a dark frame is left alone`() {
         // Inverting this would turn the frame into a glaring white border —
         // exactly the thing a dark theme is meant to avoid.
