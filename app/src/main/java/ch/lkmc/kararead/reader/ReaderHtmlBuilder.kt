@@ -287,6 +287,8 @@ ${imageToneScript(invertsImages(palette, prefs))}
 (function(){
   var LIGHT = ${ImageTone.LIGHT_LEVEL}, DARK = ${ImageTone.DARK_LEVEL};
   var VIVID = ${ImageTone.VIVID_SATURATION};
+  var BUCKET_BITS = ${ImageTone.COLOR_BUCKET_BITS};
+  var BUCKET_SHIFT = 8 - BUCKET_BITS, BUCKETS = 1 << (3 * BUCKET_BITS);
   // Sampled pixels per image. 16k is plenty to measure a distribution and
   // costs well under a millisecond to walk.
   var BUDGET = 16384;
@@ -349,6 +351,9 @@ ${imageToneScript(invertsImages(palette, prefs))}
     var n = cw * ch, light = 0, dark = 0, vivid = 0, satSum = 0;
     var hist = [], b;
     for (b = 0; b < 32; b++) hist[b] = 0;
+    // How much of the palette the image spends: a page of text uses a few
+    // dozen of these, a colour photograph hundreds.
+    var seen = new Uint8Array(BUCKETS), distinct = 0;
     for (var i = 0; i < n; i++){
       var o = i * 4, r = d[o], g = d[o + 1], bl = d[o + 2];
       var lum = lumAt(d, o);
@@ -359,6 +364,9 @@ ${imageToneScript(invertsImages(palette, prefs))}
       satSum += sat;
       if (sat > VIVID) vivid++;
       hist[lum >> 3]++;
+      var bucket = ((r >> BUCKET_SHIFT) << (BUCKET_BITS * 2)) |
+        ((g >> BUCKET_SHIFT) << BUCKET_BITS) | (bl >> BUCKET_SHIFT);
+      if (!seen[bucket]){ seen[bucket] = 1; distinct++; }
     }
     // The dominant level, measured over two adjacent 8-level buckets so JPEG
     // noise around a flat background still reads as one peak.
@@ -372,6 +380,7 @@ ${imageToneScript(invertsImages(palette, prefs))}
       sat: satSum / n, vivid: vivid / n,
       border: borderLight(d, cw, ch),
       peak: peak / n, peakLevel: peakBand * 8 + 8,
+      colors: distinct / BUCKETS,
       samples: n
     };
   }
@@ -381,7 +390,8 @@ ${imageToneScript(invertsImages(palette, prefs))}
     if (s && window.AndroidReader && window.AndroidReader.shouldInvertImage){
       try {
         bright = !!window.AndroidReader.shouldInvertImage(
-          s.light, s.dark, s.sat, s.vivid, s.border, s.peak, s.peakLevel, s.samples);
+          s.light, s.dark, s.sat, s.vivid, s.border, s.peak, s.peakLevel,
+          s.colors, s.samples);
       } catch (e) { bright = false; }
     }
     img.setAttribute('data-kr-tone', bright ? 'bright' : 'plain');

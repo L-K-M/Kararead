@@ -544,6 +544,7 @@ internal class ReaderBridge(
         borderLightFraction: Double,
         peakFraction: Double,
         peakLevel: Int,
+        colorBucketFraction: Double,
         samples: Int,
     ): Boolean = ImageTone.shouldInvert(
         ImageToneStats(
@@ -554,6 +555,7 @@ internal class ReaderBridge(
             borderLightFraction = borderLightFraction,
             peakFraction = peakFraction,
             peakLevel = peakLevel,
+            colorBucketFraction = colorBucketFraction,
             samples = samples,
         ),
     )

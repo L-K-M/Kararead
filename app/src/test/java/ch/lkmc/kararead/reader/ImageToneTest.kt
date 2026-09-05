@@ -19,6 +19,7 @@ class ImageToneTest {
         borderLightFraction: Double = 0.99,
         peakFraction: Double = 0.85,
         peakLevel: Int = 248,
+        colorBucketFraction: Double = 0.01,
         samples: Int = 16384,
     ) = ImageToneStats(
         lightFraction = lightFraction,
@@ -28,6 +29,7 @@ class ImageToneTest {
         borderLightFraction = borderLightFraction,
         peakFraction = peakFraction,
         peakLevel = peakLevel,
+        colorBucketFraction = colorBucketFraction,
         samples = samples,
     )
 
@@ -90,6 +92,14 @@ class ImageToneTest {
     @Test
     fun `a blank image has nothing to gain and is left alone`() {
         assertFalse(ImageTone.shouldInvert(screenshot(lightFraction = 0.999, darkFraction = 0.0)))
+    }
+
+    @Test
+    fun `a muted photograph is caught by the size of its palette`() {
+        // Low saturation, flat-looking, bright — it clears every other guard.
+        // What gives it away is that it spends hundreds of colours where a page
+        // of text spends a few dozen.
+        assertFalse(ImageTone.shouldInvert(screenshot(colorBucketFraction = 0.28)))
     }
 
     @Test

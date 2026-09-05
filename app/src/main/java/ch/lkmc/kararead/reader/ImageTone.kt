@@ -23,6 +23,12 @@ data class ImageToneStats(
     val peakFraction: Double,
     /** Centre luminance (0..255) of that band. */
     val peakLevel: Int,
+    /**
+     * Share of the 4096 quantised colour buckets (4 bits per channel) the image
+     * actually uses. A page of text spends a few dozen; a colour photograph
+     * spends hundreds.
+     */
+    val colorBucketFraction: Double,
     /** How many pixels were sampled. */
     val samples: Int,
 )
@@ -48,8 +54,15 @@ data class ImageToneStats(
  *    and lowish-contrast but its luminance is spread across the whole range;
  *    a screenshot's background is a single value.
  *
- * Saturation guards the remaining case — a bright, flat, high-contrast *colour*
- * graphic (an infographic, a poster) that inverting would only disfigure.
+ * Saturation and the palette size guard the remaining case — a bright, flat,
+ * high-contrast *colour* graphic (an infographic, a poster, a muted photograph)
+ * that inverting would only disfigure.
+ *
+ * Worth noting for anyone who reaches for it: WebView's own algorithmic
+ * darkening cannot do this. Blink's force-dark classifier only ever runs on
+ * images up to 64x64 CSS px and calls everything larger a photo, and it is
+ * switched off entirely for a page that declares its own dark styles — which
+ * the reader does, via `color-scheme: dark`.
  */
 object ImageTone {
 
@@ -61,6 +74,9 @@ object ImageTone {
 
     /** HSV saturation above which a pixel counts as vividly coloured. */
     const val VIVID_SATURATION = 0.45
+
+    /** Bits per channel the colour buckets are quantised to (16 levels each). */
+    const val COLOR_BUCKET_BITS = 4
 
     /** Below this many sampled pixels the fractions are too noisy to trust. */
     const val MIN_SAMPLES = 1024
@@ -84,6 +100,16 @@ object ImageTone {
     private const val MAX_MEAN_SATURATION = 0.12
     private const val MAX_VIVID = 0.15
 
+    // Palette size — the feature both shipped classifiers of this kind rank
+    // first (Chromium's force-dark decision tree, mod_pagespeed's illustration
+    // detector). A screenshot of text spends a few dozen of the 4096 buckets
+    // even with syntax highlighting; a colour photograph spends hundreds. 0.10
+    // is ~410 buckets: several times what a busy screenshot needs, well under
+    // what a photograph reaches. This is what catches the muted photograph that
+    // slips past the saturation guards — a *greyscale* one spends as few
+    // buckets as a screenshot, which is what MAX_MID and MIN_PEAK are for.
+    private const val MAX_COLOR_BUCKETS = 0.10
+
     // A bright panel inside a dark frame (a letterboxed still, a dark-themed
     // screenshot with a white content pane) would invert into a glaring white
     // border, so the margin has to be bright too.
@@ -101,6 +127,7 @@ object ImageTone {
             stats.peakLevel >= LIGHT_LEVEL &&
             stats.meanSaturation <= MAX_MEAN_SATURATION &&
             stats.vividFraction <= MAX_VIVID &&
+            stats.colorBucketFraction <= MAX_COLOR_BUCKETS &&
             stats.borderLightFraction >= MIN_BORDER_LIGHT
     }
 }
