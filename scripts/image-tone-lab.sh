@@ -57,14 +57,17 @@ TONE=app/src/main/java/ch/lkmc/kararead/reader/ImageTone.kt
 # as NAME=VALUE lines: the sampler's interpolations and the judge's thresholds
 # both come from here. (Plain lines rather than an associative array so the
 # script runs on the bash 3 that macOS ships.)
-CONSTS="$(awk 'match($0, /const val [A-Z_]+ = [0-9.]+/) { split(substr($0, RSTART, RLENGTH), a, " "); print a[3] "=" a[5] }' "$TONE")"
-# That pattern only reads `NAME = <decimal>`. A constant written any other way
-# would be missing from the judge's K, and while ten of its tests fail closed on
-# an undefined threshold, the sample-count one passes everything — so refuse to
-# run with a constant unread rather than run with a quietly weaker judge.
+CONSTS="$(awk 'match($0, /const val [A-Z_]+ = [^ ]+/) { split(substr($0, RSTART, RLENGTH), a, " "); print a[3] "=" a[5] }' "$TONE")"
+# Only a plain decimal is usable here. A literal that would be misread (1e-3,
+# 5_000, 0x10, 0.5f) or a declaration the pattern cannot read at all (a type
+# annotation) would leave the sampler and the judge running against numbers
+# that are not ImageTone's, with nothing to say so. Refuse instead.
 n_decl="$(grep -Ec '^[[:space:]]*(private[[:space:]]+)?const val ' "$TONE" || true)"
 n_read="$(grep -c . <<<"$CONSTS" || true)"
 [[ "$n_decl" == "$n_read" ]] || { echo "!! read $n_read of $n_decl const vals in $TONE; only \`NAME = <number>\` is understood" >&2; exit 1; }
+while IFS='=' read -r name value; do
+  [[ "$value" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "!! $name = $value in $TONE: only a plain decimal is understood" >&2; exit 1; }
+done <<<"$CONSTS"
 for kv in ${OVERRIDES[@]+"${OVERRIDES[@]}"}; do
   name="${kv%%=*}"
   grep -q "^$name=" <<<"$CONSTS" || { echo "!! no such constant in ImageTone.kt: $name" >&2; exit 2; }
@@ -84,9 +87,8 @@ KJS+="};"
 SAMPLER="${SAMPLER//\$\{initiallyOn\}/true}"
 [[ "$SAMPLER" != *'${'* ]] || { echo "!! unresolved interpolation left in the sampler" >&2; exit 1; }
 
-if [[ -n "$KEEP_HTML" ]]; then HTML="$KEEP_HTML"; else
-  TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT; HTML="$TMP/lab.html"
-fi
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+if [[ -n "$KEEP_HTML" ]]; then HTML="$KEEP_HTML"; else HTML="$TMP/lab.html"; fi
 
 {
 cat <<'EOF'
@@ -103,15 +105,20 @@ cat <<'EOF'
 <p>Dark page. Images the sampler marks bright are shown with the reader's Dark-theme filter applied.</p>
 <div class="kr-article" id="art"></div>
 <script>
+// Its own script element, so a script below that fails to even parse is still
+// caught here rather than leaving the page with no report at all.
 var errors = [];
 window.addEventListener('error', function(e){ errors.push(e.message || 'script error'); });
+</script>
+<script>
 EOF
 printf '%s\n' "$KJS"
 cat <<'EOF'
 // Mirror of ImageTone.shouldInvert, keeping the list of conjuncts that failed.
 function verdict(s){
   var mid = Math.max(0, 1 - s.light - s.dark), fails = [];
-  if (s.samples < K.MIN_SAMPLES) fails.push('samples');
+  if (!(s.samples >= K.MIN_SAMPLES)) fails.push('samples');
+  if (s.clear > K.LIGHT_ART_MIN_CLEAR && s.opaqueLight > K.LIGHT_ART_MIN_OPAQUE_LIGHT) fails.push('lightArtOnAlpha');
   if (!(s.light >= K.MIN_LIGHT)) fails.push('light<' + K.MIN_LIGHT);
   if (!(s.dark >= K.MIN_DARK)) fails.push('dark<' + K.MIN_DARK);
   if (!(s.dark <= K.MAX_DARK)) fails.push('dark>' + K.MAX_DARK);
@@ -128,8 +135,8 @@ function verdict(s){
 // Stands in for the ReaderBridge. The sampler writes data-kr-tone right after
 // asking, so hooking setAttribute pins each answer to its image.
 var last = null;
-window.AndroidReader = { shouldInvertImage: function(light, dark, sat, vivid, border, peak, peakLevel, colors, samples){
-  last = {light: light, dark: dark, sat: sat, vivid: vivid, border: border, peak: peak, peakLevel: peakLevel, colors: colors, samples: samples};
+window.AndroidReader = { shouldInvertImage: function(light, dark, sat, vivid, border, peak, peakLevel, colors, samples, clear, opaqueLight){
+  last = {light: light, dark: dark, sat: sat, vivid: vivid, border: border, peak: peak, peakLevel: peakLevel, colors: colors, samples: samples, clear: clear, opaqueLight: opaqueLight};
   return verdict(last);
 }};
 var setAttr = Element.prototype.setAttribute;
@@ -139,6 +146,7 @@ Element.prototype.setAttribute = function(n, v){
 };
 
 var LOREM = 'The quick brown fox jumps over the lazy dog while the committee reviewed the quarterly figures and found that the numbers did not add up in the way anyone had expected so a second audit was commissioned for the following spring';
+var TAU = Math.PI * 2;
 function mk(w, h){ var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 function fill(ctx, w, h, c){ ctx.fillStyle = c; ctx.fillRect(0, 0, w, h); }
 function paintText(ctx, w, h, o){
@@ -212,7 +220,7 @@ add('light_grey_ui', true, false, 1200, 800, function(ctx, w, h){
 add('emoji_chat', true, false, 1080, 1600, function(ctx, w, h){
   fill(ctx, w, h, '#fff'); paintText(ctx, w, h, {font: '30px sans-serif', lh: 60, x0: 60, y0: 60, yMax: h - 60, wrapW: w - 300});
   var cols = ['#f44336', '#ffeb3b', '#4caf50', '#2196f3', '#ff9800', '#9c27b0'];
-  for (var i = 0; i < 45; i++){ var x = 880 + (i % 3) * 60, y = 80 + Math.floor(i / 3) * 100; ctx.fillStyle = cols[i % 6]; ctx.beginPath(); ctx.arc(x, y, 18, 0, 7); ctx.fill(); ctx.fillStyle = cols[(i + 2) % 6]; ctx.beginPath(); ctx.arc(x - 5, y - 4, 7, 0, 7); ctx.fill(); }
+  for (var i = 0; i < 45; i++){ var x = 880 + (i % 3) * 60, y = 80 + Math.floor(i / 3) * 100; ctx.fillStyle = cols[i % 6]; ctx.beginPath(); ctx.arc(x, y, 18, 0, TAU); ctx.fill(); ctx.fillStyle = cols[(i + 2) % 6]; ctx.beginPath(); ctx.arc(x - 5, y - 4, 7, 0, TAU); ctx.fill(); }
 }, 'png');
 add('scanned_doc', true, false, 1000, 1400, function(ctx, w, h){
   fill(ctx, w, h, 'rgb(238,234,226)'); var g = ctx.createRadialGradient(500, 700, 300, 500, 700, 900); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.08)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
@@ -230,6 +238,14 @@ add('line_art_alpha', true, false, 1000, 700, function(ctx, w, h){
 add('pastel_flowchart', true, false, 1000, 700, function(ctx, w, h){
   fill(ctx, w, h, '#fff'); var fills = ['#cce5ff', '#d5f5e3', '#fdebd0', '#e8daef', '#fadbd8'];
   for (var i = 0; i < 5; i++){ var x = 60 + (i % 3) * 320, y = 80 + Math.floor(i / 3) * 300; ctx.fillStyle = fills[i]; ctx.fillRect(x, y, 260, 200); ctx.strokeStyle = '#333'; ctx.strokeRect(x, y, 260, 200); ctx.fillStyle = '#000'; ctx.font = '18px sans-serif'; ctx.textBaseline = 'top'; ctx.fillText('Process step ' + (i + 1), x + 30, y + 80); }
+}, 'png');
+// Hairline strokes: the sparsest document there is, and the one MIN_DARK has
+// the least room for. A 1px line is hit by the nearest-neighbour sample in
+// only every eighth column, so most of the ink here is the labels.
+add('hairline_diagram', true, false, 1000, 700, function(ctx, w, h){
+  fill(ctx, w, h, '#fff'); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.fillStyle = '#000'; ctx.font = '14px sans-serif'; ctx.textBaseline = 'top';
+  for (var i = 0; i < 4; i++){ ctx.strokeRect(60.5 + i * 230, 100.5, 180, 90); ctx.fillText('Step ' + (i + 1), 90 + i * 230, 135); if (i < 3){ ctx.beginPath(); ctx.moveTo(240.5 + i * 230, 145.5); ctx.lineTo(290.5 + i * 230, 145.5); ctx.stroke(); } }
+  for (var j = 0; j < 6; j++){ ctx.beginPath(); ctx.moveTo(100.5, 300.5 + j * 60); ctx.lineTo(900.5, 300.5 + j * 60); ctx.stroke(); }
 }, 'png');
 // Hairline axes, coloured (mid-luminance) series, a few tiny labels: 0.1% ink,
 // which is not distinguishable from a light-on-alpha logo with a stray shadow.
@@ -265,25 +281,45 @@ add('imessage', null, false, 1080, 1800, function(ctx, w, h){
     ctx.fillStyle = mine ? '#fff' : '#000'; ctx.font = '32px sans-serif'; ctx.textBaseline = 'top'; ctx.fillText('Message number ' + (i + 1) + ' in the thread', x + 30, 120 + i * 190); }
 }, 'png');
 
+// —— Transparency. Light artwork on alpha was drawn for a dark page already;
+// over white it is a sparse document with a dark accent, and only its alpha
+// says otherwise. The same marks in black are the case the composite rescues,
+// and a window capture with a shadow margin is a screenshot like any other. ——
+add('light_logo_alpha', false, false, 1000, 600, function(ctx, w, h){
+  ctx.fillStyle = '#f4f4f4'; ctx.font = 'bold 120px sans-serif'; ctx.textBaseline = 'top'; ctx.fillText('KARAREAD', 60, 200);
+  ctx.fillStyle = '#e0e0e0'; ctx.fillRect(60, 360, 880, 12);
+  ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(880, 120, 34, 0, TAU); ctx.fill();
+}, 'png');
+add('dark_logo_alpha', true, false, 1000, 600, function(ctx, w, h){
+  ctx.fillStyle = '#111'; ctx.font = 'bold 120px sans-serif'; ctx.textBaseline = 'top'; ctx.fillText('KARAREAD', 60, 200);
+  ctx.fillStyle = '#333'; ctx.fillRect(60, 360, 880, 12);
+}, 'png');
+add('mac_window_alpha', true, false, 1320, 920, function(ctx, w, h){
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 25;
+  ctx.fillStyle = '#fff'; ctx.fillRect(60, 40, 1200, 800);
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  paintText(ctx, w, h, {x0: 100, y0: 90, yMax: 800, wrapW: 1120});
+}, 'png');
+
 // —— Known limitations: flat, bright, near-grey photographs with a few dark
 // objects are, histogram for histogram, black marks on paper. ——
 add('snow_scene', false, true, 1200, 800, function(ctx, w, h){
   var g = ctx.createLinearGradient(0, 0, 0, h * 0.4); g.addColorStop(0, 'rgb(180,198,222)'); g.addColorStop(1, 'rgb(228,234,242)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h * 0.4);
   ctx.fillStyle = 'rgb(240,242,246)'; ctx.fillRect(0, h * 0.4, w, h * 0.6);
   var g2 = ctx.createLinearGradient(0, h * 0.4, 0, h); g2.addColorStop(0, 'rgba(120,140,170,0.25)'); g2.addColorStop(1, 'rgba(120,140,170,0)'); ctx.fillStyle = g2; ctx.fillRect(0, h * 0.4, w, h * 0.6);
-  ctx.fillStyle = 'rgb(40,50,35)'; for (var i = 0; i < 40; i++){ ctx.beginPath(); ctx.arc(700 + rand() * 300, 250 + rand() * 250, 12 + rand() * 30, 0, 7); ctx.fill(); }
+  ctx.fillStyle = 'rgb(40,50,35)'; for (var i = 0; i < 40; i++){ ctx.beginPath(); ctx.arc(700 + rand() * 300, 250 + rand() * 250, 12 + rand() * 30, 0, TAU); ctx.fill(); }
   noise(ctx, w, h, 9);
 }, 'jpeg', 0.85);
 add('grey_product_on_white', false, true, 1000, 1000, function(ctx, w, h){
   fill(ctx, w, h, '#fff'); var g = ctx.createRadialGradient(420, 420, 20, 500, 500, 300); g.addColorStop(0, 'rgb(230,235,240)'); g.addColorStop(0.6, 'rgb(120,130,150)'); g.addColorStop(1, 'rgb(40,45,60)');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(500, 500, 300, 0, 7); ctx.fill(); noise(ctx, w, h, 3);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(500, 500, 300, 0, TAU); ctx.fill(); noise(ctx, w, h, 3);
 }, 'jpeg', 0.85);
 add('bright_muted_photo', false, true, 1200, 800, function(ctx, w, h){
   fill(ctx, w, h, 'rgb(228,222,210)');
   for (var i = 0; i < 25; i++){ var x = rand() * w, y = rand() * h, r = 150 + rand() * 250, g = ctx.createRadialGradient(x, y, 0, x, y, r);
     var dr = Math.round(rand() * 60 - 30), dg = Math.round(rand() * 60 - 30), db = Math.round(rand() * 60 - 30);
     g.addColorStop(0, 'rgba(' + (228 + dr) + ',' + (222 + dg) + ',' + (210 + db) + ',0.6)'); g.addColorStop(1, 'rgba(228,222,210,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); }
-  ctx.fillStyle = 'rgb(50,40,35)'; for (var j = 0; j < 12; j++){ ctx.beginPath(); ctx.arc(rand() * w, rand() * h, 20 + rand() * 35, 0, 7); ctx.fill(); }
+  ctx.fillStyle = 'rgb(50,40,35)'; for (var j = 0; j < 12; j++){ ctx.beginPath(); ctx.arc(rand() * w, rand() * h, 20 + rand() * 35, 0, TAU); ctx.fill(); }
   noise(ctx, w, h, 6);
 }, 'jpeg', 0.85);
 
@@ -306,9 +342,11 @@ function report(){
     if (mark === 'XXX') bad++;
     var stat = s ? 'light=' + s.light.toFixed(3) + ' dark=' + s.dark.toFixed(3) + ' mid=' + s.mid.toFixed(3) + ' peak=' + s.peak.toFixed(3) + '@' + s.peakLevel +
       ' sat=' + s.sat.toFixed(3) + ' vivid=' + s.vivid.toFixed(3) + ' colors=' + s.colors.toFixed(3) + ' border=' + s.border.toFixed(3) + ' n=' + s.samples +
+      (s.clear ? ' clear=' + s.clear.toFixed(2) + '/' + s.opaqueLight.toFixed(2) : '') +
       (s.fails.length ? '  FAIL:' + s.fails.join(',') : '') : '(too small to sample)';
     lines.push(mark + ' ' + im.getAttribute('data-name').padEnd(22) + ' expect=' + exp.padEnd(5) + ' got=' + String(got).padEnd(5) + ' ' + stat);
-    im.parentNode.lastChild.textContent = im.getAttribute('data-name') + ' — ' + (got ? 'inverted' : 'left alone') + (mark === 'XXX' ? '  (WRONG)' : '');
+    var cap = im.parentNode.querySelector('figcaption');
+    if (cap) cap.textContent = im.getAttribute('data-name') + ' — ' + (got ? 'inverted' : 'left alone') + (mark === 'XXX' ? '  (WRONG)' : '');
   }
   if (errors.length) lines.push('FAILED: uncaught error: ' + errors.join('; '));
   else if (!imgs.length) lines.push('FAILED: no images under .kr-article — the case list never ran');
@@ -343,11 +381,12 @@ echo "==> Sampling in $CHROME"
 # --virtual-time-budget lets the page's timers and image decodes settle before
 # the DOM is dumped; the report is the <pre> the page appends at the end.
 DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars \
-  --virtual-time-budget=30000 --dump-dom "file://$HTML" 2>/dev/null || true)"
+  --virtual-time-budget=30000 --dump-dom "file://$HTML" 2>"$TMP/chrome.err" || true)"
 REPORT="$(printf '%s\n' "$DOM" | sed -n '/<pre id="report">/,/<\/pre>/p' | sed -e 's/.*<pre id="report">//' -e 's/<\/pre>.*//' \
   -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e 's/&amp;/\&/g')"
 if [[ -z "$REPORT" ]]; then
   echo "!! No report in the page output; is $CHROME a Chromium?" >&2
+  [[ -s "$TMP/chrome.err" ]] && { echo "-- what it said:" >&2; head -n 15 "$TMP/chrome.err" >&2; }
   exit 1
 fi
 printf '%s\n' "$REPORT"

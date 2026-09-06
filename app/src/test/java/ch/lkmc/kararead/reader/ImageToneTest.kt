@@ -22,6 +22,8 @@ class ImageToneTest {
         peakLevel: Int = 248,
         colorBucketFraction: Double = 0.01,
         samples: Int = 16384,
+        clearFraction: Double = 0.0,
+        opaqueLightFraction: Double = lightFraction,
     ) = ImageToneStats(
         lightFraction = lightFraction,
         darkFraction = darkFraction,
@@ -32,6 +34,8 @@ class ImageToneTest {
         peakLevel = peakLevel,
         colorBucketFraction = colorBucketFraction,
         samples = samples,
+        clearFraction = clearFraction,
+        opaqueLightFraction = opaqueLightFraction,
     )
 
     @Test
@@ -190,6 +194,38 @@ class ImageToneTest {
     @Test
     fun `a peak at a mid grey level is not paper`() {
         assertFalse(ImageTone.shouldInvert(screenshot(peakLevel = 160)))
+    }
+
+    @Test
+    fun `light artwork on a transparent background is left alone`() {
+        // A white wordmark with a dark accent. Composited over white it is a
+        // sparse document, and inverting it would paint the marks in near-black
+        // on the dark page; alpha is the only thing that tells it apart.
+        assertFalse(
+            ImageTone.shouldInvert(
+                screenshot(
+                    lightFraction = 0.96, darkFraction = 0.01,
+                    clearFraction = 0.80, opaqueLightFraction = 0.95,
+                ),
+            ),
+        )
+        // The same marks in black on the same transparency are the case the
+        // white composite exists to rescue.
+        assertTrue(
+            ImageTone.shouldInvert(
+                screenshot(
+                    lightFraction = 0.96, darkFraction = 0.03,
+                    clearFraction = 0.80, opaqueLightFraction = 0.02,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a screenshot with a transparent shadow margin is still a screenshot`() {
+        // A macOS window capture: opaque paper with a soft shadow fading to
+        // clear around it. Well under half clear, so the histogram decides.
+        assertTrue(ImageTone.shouldInvert(screenshot(clearFraction = 0.15, opaqueLightFraction = 0.90)))
     }
 
     @Test

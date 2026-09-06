@@ -5,8 +5,9 @@ package ch.lkmc.kararead.reader
  * WebView (canvas) and handed to [ImageTone] over the JS bridge.
  *
  * Every fraction lies in 0..1, but they do not share a denominator: light,
- * dark, vivid and peak are over all the sampled pixels, [borderLightFraction]
- * over its edge ring alone, and [colorBucketFraction] over the colour buckets.
+ * dark, vivid, peak and clear are over all the sampled pixels,
+ * [borderLightFraction] over its edge ring alone, [opaqueLightFraction] over
+ * the opaque pixels alone, and [colorBucketFraction] over the colour buckets.
  * The thresholds in [ImageTone] are calibrated per denominator, so re-deriving
  * the sampler as if they were all per-pixel would quietly move two of them.
  *
@@ -48,6 +49,19 @@ data class ImageToneStats(
     val colorBucketFraction: Double,
     /** How many pixels were sampled. */
     val samples: Int,
+    /**
+     * Pixels that are clear (alpha below [ImageTone.CLEAR_ALPHA]), over the
+     * sampled pixels. Zero for anything but a PNG with an alpha channel.
+     */
+    val clearFraction: Double,
+    /**
+     * Light pixels among the opaque ones (alpha at or above
+     * [ImageTone.OPAQUE_ALPHA]), over those opaque pixels — the same as
+     * [lightFraction] for an opaque image. Read before the sampler composites
+     * the transparency away, it is what tells light artwork on alpha from
+     * dark line art on alpha.
+     */
+    val opaqueLightFraction: Double,
 )
 
 /**
@@ -74,6 +88,11 @@ data class ImageToneStats(
  * Saturation and the palette size guard the remaining case — a bright, flat,
  * high-contrast *colour* graphic (an infographic, a poster, a muted photograph)
  * that inverting would only disfigure.
+ *
+ * Alpha guards one more: light artwork on a transparent background, which
+ * composites over white into a sparse document but was drawn for a dark page
+ * already ([clearFraction][ImageToneStats.clearFraction],
+ * [opaqueLightFraction][ImageToneStats.opaqueLightFraction]).
  *
  * These are histogram tests, blind to layout, so a photograph that happens to
  * be *shaped* like a document slips through: a flat, bright, near-grey scene
@@ -126,6 +145,12 @@ object ImageTone {
     /** Bits per channel the colour buckets are quantised to (16 levels each). */
     const val COLOR_BUCKET_BITS = 4
 
+    /** Alpha below which a pixel is clear: not drawn, whatever colour it carries. */
+    const val CLEAR_ALPHA = 16
+
+    /** Alpha from which a pixel is opaque, and its colour is the artwork's own. */
+    const val OPAQUE_ALPHA = 128
+
     /** Below this many sampled pixels the fractions are too noisy to trust. */
     const val MIN_SAMPLES = 1024
 
@@ -133,9 +158,10 @@ object ImageTone {
     // with no ink gains nothing from being flipped, and a light-ink-on-alpha
     // graphic (already made for dark backgrounds) — which the white composite
     // turns into a blank — would be ruined by it. The ink floor is set by how
-    // little a *diagram* has: 2px lines and labels on a 1000x700 canvas sample
-    // at 0.3-0.5% ink (measured in Chromium), a tenth of what a page of text
-    // carries, and those are the images that vanish on a dark page.
+    // little a *diagram* has: lines and labels on a 1000x700 canvas sample at
+    // 0.3-0.5% ink with 2px strokes and 0.9% with hairlines and more labels
+    // (measured in Chromium), a tenth of what a page of text carries, and
+    // those are the images that vanish on a dark page.
     private const val MIN_LIGHT = 0.55
     private const val MIN_DARK = 0.002
     // Implied by MIN_LIGHT today — the sampler's bins are disjoint, so light and
@@ -177,9 +203,23 @@ object ImageTone {
     // terminal measures 0.59 there while a frame on two sides measures 0.41.
     private const val MIN_BORDER_LIGHT = 0.50
 
+    // Light artwork on transparency — a wordmark, a diagram drawn for a dark
+    // page — composites over white into something the histogram cannot tell
+    // from a sparse document with a few dark accents, and inverting it paints
+    // its marks in near-black on the dark page: the one outcome worse than
+    // glare. Alpha is what tells it from the dark-on-alpha line art the
+    // composite exists to rescue. Half the image has to be clear before this
+    // applies at all; a screenshot saved with a transparent shadow margin (a
+    // macOS window) stays well under that.
+    private const val LIGHT_ART_MIN_CLEAR = 0.50
+    private const val LIGHT_ART_MIN_OPAQUE_LIGHT = 0.80
+
     /** True when [stats] describe a bright document worth flipping for a dark page. */
     fun shouldInvert(stats: ImageToneStats): Boolean {
         if (stats.samples < MIN_SAMPLES) return false
+        if (stats.clearFraction > LIGHT_ART_MIN_CLEAR &&
+            stats.opaqueLightFraction > LIGHT_ART_MIN_OPAQUE_LIGHT
+        ) return false
         val mid = (1.0 - stats.lightFraction - stats.darkFraction).coerceAtLeast(0.0)
         return stats.lightFraction >= MIN_LIGHT &&
             stats.darkFraction >= MIN_DARK &&

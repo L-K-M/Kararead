@@ -334,7 +334,7 @@ class ReaderHtmlBuilderTest {
         val dark = ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK)
         val css = ReaderHtmlBuilder.variableCss(dark, ReaderPreferences(theme = ReaderTheme.DARK))
         val strength = Regex.escape(dark.imageInvert)
-        assertTrue(Regex("--kr-img-invert:\\s*$strength(?![0-9])").containsMatchIn(css))
+        assertTrue(Regex("--kr-img-invert:\\s*$strength(?![0-9.])").containsMatchIn(css))
     }
 
     @Test
@@ -361,6 +361,7 @@ class ReaderHtmlBuilderTest {
             dark, ReaderPreferences(theme = ReaderTheme.DARK, invertBrightImages = false),
         )
         assertTrue(off.contains("krApplyImageInvert(false)"))
+        assertFalse(off.contains("krApplyImageInvert(true)"))
 
         // And switching back to a light theme disarms it even with the
         // preference still on. Worth pinning rather than assuming: the class is
@@ -372,6 +373,7 @@ class ReaderHtmlBuilderTest {
             ReaderPreferences(theme = ReaderTheme.LIGHT, invertBrightImages = true),
         )
         assertTrue(backToLight.contains("krApplyImageInvert(false)"))
+        assertFalse(backToLight.contains("krApplyImageInvert(true)"))
     }
 
     @Test
@@ -395,6 +397,8 @@ class ReaderHtmlBuilderTest {
         pinned("VIVID", ImageTone.VIVID_SATURATION)
         pinned("BUCKET_BITS", ImageTone.COLOR_BUCKET_BITS)
         pinned("CHROMA", ImageTone.CHROMA_FLOOR)
+        pinned("CLEAR_ALPHA", ImageTone.CLEAR_ALPHA)
+        pinned("OPAQUE_ALPHA", ImageTone.OPAQUE_ALPHA)
     }
 
     @Test
@@ -415,7 +419,8 @@ class ReaderHtmlBuilderTest {
             .substringBefore(")")
             .replace(Regex("\\s+"), "")
         assertEquals(
-            "s.light,s.dark,s.sat,s.vivid,s.border,s.peak,s.peakLevel,s.colors,s.samples",
+            "s.light,s.dark,s.sat,s.vivid,s.border,s.peak,s.peakLevel,s.colors,s.samples," +
+                "s.clear,s.opaqueLight",
             call,
         )
     }

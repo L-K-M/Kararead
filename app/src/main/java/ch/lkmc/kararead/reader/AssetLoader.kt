@@ -117,7 +117,13 @@ class AssetLoader @Inject constructor(
             // one — and OkHttp reports an empty reason phrase for every HTTP/2
             // response. That throw would be swallowed by intercept()'s catch and
             // every image would quietly lose its bearer auth.
-            if (response.request.header("Authorization") == null && mime.startsWith("image/", ignoreCase = true)) {
+            // Also on the type an object store hands out when nobody told it
+            // better, and the one substituted above for a missing header: an
+            // <img> still decodes those by sniffing, so without the header only
+            // the measuring copy would fail and the image would stay glaring.
+            val imageLike = mime.startsWith("image/", ignoreCase = true) ||
+                mime.endsWith("/octet-stream", ignoreCase = true)
+            if (response.request.header("Authorization") == null && imageLike) {
                 setResponseHeaders(CORS_HEADERS)
             }
         }
@@ -153,8 +159,10 @@ class AssetLoader @Inject constructor(
          * the server as its base URL — so they are already same-origin and
          * canvas-readable, and there is nothing to gain from making
          * authenticated bytes script-readable to anything else on the page.
-         * (With no server configured the document has an opaque origin and
-         * nothing is readable; inversion then simply never happens.)
+         * (With no server configured the document has an opaque origin, but
+         * `*` satisfies the CORS check for a null origin on an anonymous-mode
+         * load — credentials are what it refuses — so the measuring copy is
+         * readable there too.)
          */
         private val CORS_HEADERS = mapOf("Access-Control-Allow-Origin" to "*")
     }

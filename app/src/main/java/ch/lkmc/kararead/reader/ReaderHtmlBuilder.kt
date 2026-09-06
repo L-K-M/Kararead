@@ -288,6 +288,7 @@ ${imageToneScript(invertsImages(palette, prefs))}
   var LIGHT = ${ImageTone.LIGHT_LEVEL}, DARK = ${ImageTone.DARK_LEVEL};
   var VIVID = ${ImageTone.VIVID_SATURATION}, CHROMA = ${ImageTone.CHROMA_FLOOR};
   var BUCKET_BITS = ${ImageTone.COLOR_BUCKET_BITS};
+  var CLEAR_ALPHA = ${ImageTone.CLEAR_ALPHA}, OPAQUE_ALPHA = ${ImageTone.OPAQUE_ALPHA};
   var BUCKET_SHIFT = 8 - BUCKET_BITS, BUCKETS = 1 << (3 * BUCKET_BITS);
   // Sampled pixels per image. 16k is plenty to measure a distribution and
   // costs well under a millisecond to walk.
@@ -340,25 +341,37 @@ ${imageToneScript(invertsImages(palette, prefs))}
     // backing store spares up to MAX_IMAGES GPU round trips per article.
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
-    // Composite over white: a transparent PNG of dark line art is the case that
-    // vanishes completely on a dark page, and sampling it over paper is what
-    // gets it flipped into view.
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cw, ch);
     // Nearest-neighbour, not averaging: smoothing would blend black text into
     // grey and hide the very bimodality we are looking for.
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, 0, 0, cw, ch);
     var d = ctx.getImageData(0, 0, cw, ch).data;
     var n = cw * ch, light = 0, dark = 0, vivid = 0, satSum = 0;
+    // Alpha is read before it is composited away: it is what tells light
+    // artwork on transparency — drawn for a dark page, and made invisible by
+    // inverting — from the dark line art on transparency the composite rescues.
+    var clear = 0, opaque = 0, opaqueLight = 0;
     var hist = [], b;
     for (b = 0; b < 32; b++) hist[b] = 0;
     // How much of the palette the image spends: a page of text uses a few
     // dozen of these, a colour photograph hundreds.
     var seen = new Uint32Array(BUCKETS);
     for (var i = 0; i < n; i++){
-      var o = i * 4, r = d[o], g = d[o + 1], bl = d[o + 2];
+      var o = i * 4, a = d[o + 3];
+      if (a < 255){
+        // Composite over white, in place so the border ring sees it too: a
+        // transparent PNG of dark line art is the case that vanishes completely
+        // on a dark page, and sampling it over paper is what gets it flipped
+        // into view.
+        var paper = 255 * (255 - a);
+        d[o] = (d[o] * a + paper) / 255;
+        d[o + 1] = (d[o + 1] * a + paper) / 255;
+        d[o + 2] = (d[o + 2] * a + paper) / 255;
+        if (a < CLEAR_ALPHA) clear++;
+      }
+      var r = d[o], g = d[o + 1], bl = d[o + 2];
       var lum = lumAt(d, o);
+      if (a >= OPAQUE_ALPHA){ opaque++; if (lum >= LIGHT) opaqueLight++; }
       if (lum >= LIGHT) light++; else if (lum <= DARK) dark++;
       var mx = r > g ? (r > bl ? r : bl) : (g > bl ? g : bl);
       var mn = r < g ? (r < bl ? r : bl) : (g < bl ? g : bl);
@@ -392,7 +405,8 @@ ${imageToneScript(invertsImages(palette, prefs))}
       border: borderLight(d, cw, ch),
       peak: peak / n, peakLevel: peakBand * 8 + 8,
       colors: distinct / BUCKETS,
-      samples: n
+      samples: n,
+      clear: clear / n, opaqueLight: opaque ? opaqueLight / opaque : 0
     };
   }
 
@@ -402,7 +416,7 @@ ${imageToneScript(invertsImages(palette, prefs))}
       try {
         bright = !!window.AndroidReader.shouldInvertImage(
           s.light, s.dark, s.sat, s.vivid, s.border, s.peak, s.peakLevel,
-          s.colors, s.samples);
+          s.colors, s.samples, s.clear, s.opaqueLight);
       } catch (e) {
         // Cached as 'plain' below, so a broken bridge would disable the feature
         // for the session without a trace. Leave one.
