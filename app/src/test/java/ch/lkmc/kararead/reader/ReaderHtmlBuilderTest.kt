@@ -328,11 +328,13 @@ class ReaderHtmlBuilderTest {
         assertEquals("0", ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT).imageInvert)
         assertEquals("0", ReaderHtmlBuilder.paletteFor(ReaderTheme.SEPIA).imageInvert)
 
-        val css = ReaderHtmlBuilder.variableCss(
-            ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK),
-            ReaderPreferences(theme = ReaderTheme.DARK),
-        )
-        assertTrue(Regex("--kr-img-invert:\\s*0\\.9(?![0-9])").containsMatchIn(css))
+        // The CSS carries whatever the palette says, checked through the palette
+        // rather than as a second copy of the number: retuning Dark should fail
+        // the one assertion above, not a regex here and another further down.
+        val dark = ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK)
+        val css = ReaderHtmlBuilder.variableCss(dark, ReaderPreferences(theme = ReaderTheme.DARK))
+        val strength = Regex.escape(dark.imageInvert)
+        assertTrue(Regex("--kr-img-invert:\\s*$strength(?![0-9])").containsMatchIn(css))
     }
 
     @Test
@@ -353,7 +355,7 @@ class ReaderHtmlBuilderTest {
             dark, ReaderPreferences(theme = ReaderTheme.DARK, invertBrightImages = true),
         )
         assertTrue(on.contains("krApplyImageInvert(true)"))
-        assertTrue(on.contains("'--kr-img-invert', '0.9'"))
+        assertTrue(on.contains("'--kr-img-invert', '${dark.imageInvert}'"))
 
         val off = ReaderHtmlBuilder.applyPrefsScript(
             dark, ReaderPreferences(theme = ReaderTheme.DARK, invertBrightImages = false),
@@ -381,10 +383,11 @@ class ReaderHtmlBuilderTest {
         )
         // Anchored per constant rather than matched as a line: reformatting the
         // embedded JS mustn't break a test that is about the shared numbers, and
-        // a bare substring would take `DARK = 96` out of `PEAK_DARK = 964`.
+        // a bare substring would take `DARK = 96` out of `PEAK_DARK = 964` or
+        // out of `s.DARK = 96`.
         fun pinned(name: String, value: Any) = assertTrue(
             "expected JS constant $name = $value",
-            Regex("(?<![A-Za-z0-9_])$name\\s*=\\s*${Regex.escape(value.toString())}(?![0-9.])")
+            Regex("(?<![A-Za-z0-9_.])$name\\s*=\\s*${Regex.escape(value.toString())}(?![0-9.])")
                 .containsMatchIn(out),
         )
         pinned("LIGHT", ImageTone.LIGHT_LEVEL)

@@ -32,6 +32,7 @@
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+CALLER_PWD="$PWD"
 cd "$(dirname "$SELF")/.."
 
 usage() { awk 'NR==1 && /^#!/ {next} /^#/ {sub(/^# ?/,""); print; next} {exit}' "$SELF"; }
@@ -40,9 +41,10 @@ KEEP_HTML=""
 OVERRIDES=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --set) [[ "${2:-}" == *=* ]] || { echo "!! --set wants NAME=VALUE" >&2; exit 2; }
+    --set) [[ "${2:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*=[0-9]+(\.[0-9]+)?$ ]] || { echo "!! --set wants NAME=NUMBER" >&2; exit 2; }
            OVERRIDES+=("$2"); shift 2 ;;
-    --html) KEEP_HTML="${2:?--html wants a path}"; shift 2 ;;
+    --html) KEEP_HTML="${2:?--html wants a path}"
+            [[ "$KEEP_HTML" == /* ]] || KEEP_HTML="$CALLER_PWD/$KEEP_HTML"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -56,6 +58,13 @@ TONE=app/src/main/java/ch/lkmc/kararead/reader/ImageTone.kt
 # both come from here. (Plain lines rather than an associative array so the
 # script runs on the bash 3 that macOS ships.)
 CONSTS="$(awk 'match($0, /const val [A-Z_]+ = [0-9.]+/) { split(substr($0, RSTART, RLENGTH), a, " "); print a[3] "=" a[5] }' "$TONE")"
+# That pattern only reads `NAME = <decimal>`. A constant written any other way
+# would be missing from the judge's K, and while ten of its tests fail closed on
+# an undefined threshold, the sample-count one passes everything — so refuse to
+# run with a constant unread rather than run with a quietly weaker judge.
+n_decl="$(grep -Ec '^[[:space:]]*(private[[:space:]]+)?const val ' "$TONE" || true)"
+n_read="$(grep -c . <<<"$CONSTS" || true)"
+[[ "$n_decl" == "$n_read" ]] || { echo "!! read $n_read of $n_decl const vals in $TONE; only \`NAME = <number>\` is understood" >&2; exit 1; }
 for kv in ${OVERRIDES[@]+"${OVERRIDES[@]}"}; do
   name="${kv%%=*}"
   grep -q "^$name=" <<<"$CONSTS" || { echo "!! no such constant in ImageTone.kt: $name" >&2; exit 2; }
@@ -94,6 +103,8 @@ cat <<'EOF'
 <p>Dark page. Images the sampler marks bright are shown with the reader's Dark-theme filter applied.</p>
 <div class="kr-article" id="art"></div>
 <script>
+var errors = [];
+window.addEventListener('error', function(e){ errors.push(e.message || 'script error'); });
 EOF
 printf '%s\n' "$KJS"
 cat <<'EOF'
@@ -140,7 +151,12 @@ function paintText(ctx, w, h, o){
     if (ctx.measureText(test).width > wrapW){ ctx.fillText(line, x0, y); y += lh; line = word; } else line = test;
   }
 }
-function gauss(){ var u = 1 - Math.random(), v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+// A seeded generator instead of Math.random(), so the page is the same every
+// run and a change in the numbers is a change in the sampler or the thresholds,
+// not in the dice. add() reseeds per case so inserting one leaves the rest alone.
+var seed = 1;
+function rand(){ seed = (seed + 0x6D2B79F5) | 0; var t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
+function gauss(){ var u = 1 - rand(), v = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 function noise(ctx, w, h, sigma){
   var id = ctx.getImageData(0, 0, w, h), d = id.data;
   for (var i = 0; i < d.length; i += 4){ var n = gauss() * sigma; for (var c = 0; c < 3; c++) d[i + c] = Math.max(0, Math.min(255, d[i + c] + n)); }
@@ -170,7 +186,7 @@ function subpixel(ctx, w, h, filtered){
 var cases = [];
 function add(name, expect, known, w, h, paint, type, q){
   var c = mk(w, h), ctx = c.getContext('2d', {willReadFrequently: true});
-  paint(ctx, w, h);
+  seed = 1; paint(ctx, w, h);
   cases.push({name: name, expect: expect, known: !!known, url: type === 'jpeg' ? c.toDataURL('image/jpeg', q) : c.toDataURL('image/png')});
 }
 function textOnWhite(ctx, w, h){ fill(ctx, w, h, '#fff'); paintText(ctx, w, h); }
@@ -255,7 +271,7 @@ add('snow_scene', false, true, 1200, 800, function(ctx, w, h){
   var g = ctx.createLinearGradient(0, 0, 0, h * 0.4); g.addColorStop(0, 'rgb(180,198,222)'); g.addColorStop(1, 'rgb(228,234,242)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h * 0.4);
   ctx.fillStyle = 'rgb(240,242,246)'; ctx.fillRect(0, h * 0.4, w, h * 0.6);
   var g2 = ctx.createLinearGradient(0, h * 0.4, 0, h); g2.addColorStop(0, 'rgba(120,140,170,0.25)'); g2.addColorStop(1, 'rgba(120,140,170,0)'); ctx.fillStyle = g2; ctx.fillRect(0, h * 0.4, w, h * 0.6);
-  ctx.fillStyle = 'rgb(40,50,35)'; for (var i = 0; i < 40; i++){ ctx.beginPath(); ctx.arc(700 + Math.random() * 300, 250 + Math.random() * 250, 12 + Math.random() * 30, 0, 7); ctx.fill(); }
+  ctx.fillStyle = 'rgb(40,50,35)'; for (var i = 0; i < 40; i++){ ctx.beginPath(); ctx.arc(700 + rand() * 300, 250 + rand() * 250, 12 + rand() * 30, 0, 7); ctx.fill(); }
   noise(ctx, w, h, 9);
 }, 'jpeg', 0.85);
 add('grey_product_on_white', false, true, 1000, 1000, function(ctx, w, h){
@@ -264,10 +280,10 @@ add('grey_product_on_white', false, true, 1000, 1000, function(ctx, w, h){
 }, 'jpeg', 0.85);
 add('bright_muted_photo', false, true, 1200, 800, function(ctx, w, h){
   fill(ctx, w, h, 'rgb(228,222,210)');
-  for (var i = 0; i < 25; i++){ var x = Math.random() * w, y = Math.random() * h, r = 150 + Math.random() * 250, g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    var dr = Math.round(Math.random() * 60 - 30), dg = Math.round(Math.random() * 60 - 30), db = Math.round(Math.random() * 60 - 30);
+  for (var i = 0; i < 25; i++){ var x = rand() * w, y = rand() * h, r = 150 + rand() * 250, g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    var dr = Math.round(rand() * 60 - 30), dg = Math.round(rand() * 60 - 30), db = Math.round(rand() * 60 - 30);
     g.addColorStop(0, 'rgba(' + (228 + dr) + ',' + (222 + dg) + ',' + (210 + db) + ',0.6)'); g.addColorStop(1, 'rgba(228,222,210,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); }
-  ctx.fillStyle = 'rgb(50,40,35)'; for (var j = 0; j < 12; j++){ ctx.beginPath(); ctx.arc(Math.random() * w, Math.random() * h, 20 + Math.random() * 35, 0, 7); ctx.fill(); }
+  ctx.fillStyle = 'rgb(50,40,35)'; for (var j = 0; j < 12; j++){ ctx.beginPath(); ctx.arc(rand() * w, rand() * h, 20 + rand() * 35, 0, 7); ctx.fill(); }
   noise(ctx, w, h, 6);
 }, 'jpeg', 0.85);
 
@@ -294,7 +310,9 @@ function report(){
     lines.push(mark + ' ' + im.getAttribute('data-name').padEnd(22) + ' expect=' + exp.padEnd(5) + ' got=' + String(got).padEnd(5) + ' ' + stat);
     im.parentNode.lastChild.textContent = im.getAttribute('data-name') + ' — ' + (got ? 'inverted' : 'left alone') + (mark === 'XXX' ? '  (WRONG)' : '');
   }
-  lines.push(bad ? 'FAILED: ' + bad + ' wrong verdict(s)' : 'OK: no wrong verdicts');
+  if (errors.length) lines.push('FAILED: uncaught error: ' + errors.join('; '));
+  else if (!imgs.length) lines.push('FAILED: no images under .kr-article — the case list never ran');
+  else lines.push(bad ? 'FAILED: ' + bad + ' wrong verdict(s)' : 'OK: no wrong verdicts');
   var pre = document.createElement('pre'); pre.id = 'report'; pre.textContent = lines.join('\n'); document.body.appendChild(pre);
 }
 window.addEventListener('load', function(){ setTimeout(report, 3000); });
@@ -320,6 +338,8 @@ if [[ -z "$CHROME" ]]; then
 fi
 
 echo "==> Sampling in $CHROME"
+# --no-sandbox is fine only because the page is local — file:// with data: URLs
+# it generated itself. Revisit before pointing the sampler at remote images.
 # --virtual-time-budget lets the page's timers and image decodes settle before
 # the DOM is dumped; the report is the <pre> the page appends at the end.
 DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars \
