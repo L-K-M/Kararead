@@ -156,7 +156,9 @@ ch.lkmc.kararead
 3. **Reader** — the heart. WebView with reader CSS; immersive (chrome hides on
    scroll, taps reveal). Typography sheet: theme (light/sepia/dark/black-OLED),
    font family (eight typefaces), size, line height, margins, justify — with a
-   live preview. Thin top progress bar; resume scroll. Volume keys turn pages;
+   live preview. On the dark themes, bright images (screenshots of text,
+   diagrams, line art on white) are detected and inverted so they match the
+   page instead of glaring out of it. Thin top progress bar; resume scroll. Volume keys turn pages;
    text selection can create highlights. Actions: favourite, archive (done),
    open original, share, mark unread, listen (text-to-speech). Reading-time + %
    in the bar.
@@ -212,4 +214,4 @@ GitHub Actions:
 - [x] Follow-ups shipped: highlights, text-to-speech (voice picker), volume-key
       paging, tap-to-reveal chrome, reading streaks + Stats tab, tag browsing in
       Search, "recently opened" strip, more typefaces + live preview, manual
-      accent colour
+      accent colour, bright-image inversion on the dark reader themes
