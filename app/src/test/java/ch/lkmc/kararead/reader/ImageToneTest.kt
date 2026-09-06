@@ -54,7 +54,11 @@ class ImageToneTest {
     fun `dark line art on a transparent background is inverted`() {
         // The sampler composites over white, so an alpha-backed diagram — the
         // one that disappears entirely on a dark page — arrives as ink on paper.
-        assertTrue(ImageTone.shouldInvert(screenshot(lightFraction = 0.94, darkFraction = 0.05)))
+        // And very little of it: 2px boxes, arrows and labels on a 1000x700
+        // canvas measure 0.5% ink in Chromium, a pastel flowchart 0.3%, against
+        // the 7-10% of a page of text. The floor has to admit them.
+        assertTrue(ImageTone.shouldInvert(screenshot(lightFraction = 0.993, darkFraction = 0.005)))
+        assertTrue(ImageTone.shouldInvert(screenshot(lightFraction = 0.996, darkFraction = 0.003)))
     }
 
     @Test
@@ -92,7 +96,12 @@ class ImageToneTest {
 
     @Test
     fun `a blank image has nothing to gain and is left alone`() {
+        // Also the shape of light line art on alpha — made for a dark page and
+        // composited over white by the sampler — which inverting would erase.
         assertFalse(ImageTone.shouldInvert(screenshot(lightFraction = 0.999, darkFraction = 0.0)))
+        // The floor is a few dozen sampled pixels; below it there is no ink to
+        // speak of, only a stray shadow or a hairline.
+        assertFalse(ImageTone.shouldInvert(screenshot(lightFraction = 0.999, darkFraction = 0.001)))
     }
 
     @Test
@@ -118,6 +127,15 @@ class ImageToneTest {
     }
 
     @Test
+    fun `subpixel-antialiased text is not mistaken for a colour graphic`() {
+        // ClearType and its kin tint every glyph edge, so a plain Windows
+        // screenshot measures around 0.11 mean saturation and 0.13 vivid with
+        // not a coloured pixel by design in it. That has to clear both guards
+        // with room for the face and the size of the type.
+        assertTrue(ImageTone.shouldInvert(screenshot(meanSaturation = 0.111, vividFraction = 0.130)))
+    }
+
+    @Test
     fun `a colour graphic is left as its designer drew it`() {
         // A bright, flat, high-contrast infographic passes every structural
         // test; saturation is the only thing standing between it and a ruinous
@@ -136,8 +154,26 @@ class ImageToneTest {
     @Test
     fun `a bright pane inside a dark frame is left alone`() {
         // Inverting this would turn the frame into a glaring white border —
-        // exactly the thing a dark theme is meant to avoid.
+        // exactly the thing a dark theme is meant to avoid. A letterbox reads
+        // ~0 on the ring; a dark sidebar plus a dark top bar reads 0.41.
         assertFalse(ImageTone.shouldInvert(screenshot(borderLightFraction = 0.05)))
+        assertFalse(
+            ImageTone.shouldInvert(
+                screenshot(lightFraction = 0.59, darkFraction = 0.37, borderLightFraction = 0.41),
+            ),
+        )
+    }
+
+    @Test
+    fun `a tightly cropped dense screenshot is not mistaken for a framed one`() {
+        // With no margin to speak of, the ring runs through the text, and a
+        // dense terminal reads 0.59 light there — the same as its body. That is
+        // text, not a frame.
+        assertTrue(
+            ImageTone.shouldInvert(
+                screenshot(lightFraction = 0.72, darkFraction = 0.215, borderLightFraction = 0.59),
+            ),
+        )
     }
 
     @Test

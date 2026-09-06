@@ -355,7 +355,7 @@ ${imageToneScript(invertsImages(palette, prefs))}
     for (b = 0; b < 32; b++) hist[b] = 0;
     // How much of the palette the image spends: a page of text uses a few
     // dozen of these, a colour photograph hundreds.
-    var seen = new Uint8Array(BUCKETS), distinct = 0;
+    var seen = new Uint32Array(BUCKETS);
     for (var i = 0; i < n; i++){
       var o = i * 4, r = d[o], g = d[o + 1], bl = d[o + 2];
       var lum = lumAt(d, o);
@@ -371,8 +371,14 @@ ${imageToneScript(invertsImages(palette, prefs))}
       hist[lum >> 3]++;
       var bucket = ((r >> BUCKET_SHIFT) << (BUCKET_BITS * 2)) |
         ((g >> BUCKET_SHIFT) << BUCKET_BITS) | (bl >> BUCKET_SHIFT);
-      if (!seen[bucket]){ seen[bucket] = 1; distinct++; }
+      seen[bucket]++;
     }
+    // A colour has to hold a sliver of the image before it counts as spent:
+    // subpixel-antialiased text leaves a pixel or two in hundreds of buckets
+    // along its glyph edges, and counting every one read a Windows screenshot
+    // as a colour photograph. 1/2048 of the sample is 8 pixels at full budget.
+    var floor = Math.max(2, n >> 11), distinct = 0;
+    for (b = 0; b < BUCKETS; b++) if (seen[b] >= floor) distinct++;
     // The dominant level, measured over two adjacent 8-level buckets so JPEG
     // noise around a flat background still reads as one peak.
     var peak = 0, peakBand = 0;

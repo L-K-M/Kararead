@@ -38,9 +38,12 @@ data class ImageToneStats(
      */
     val peakLevel: Int,
     /**
-     * Share of the 4096 quantised colour buckets (4 bits per channel) the image
-     * actually uses. A page of text spends a few dozen; a colour photograph
-     * spends hundreds.
+     * Share of the 4096 quantised colour buckets (4 bits per channel) holding
+     * at least 1/2048 of the sample, and never fewer than two pixels. A page of
+     * text spends a few dozen; a colour photograph spends hundreds. The floor is
+     * for subpixel-antialiased text, which leaves a pixel or two in hundreds
+     * more along its glyph edges — enough to read a Windows screenshot as a
+     * photograph if every touched bucket counted.
      */
     val colorBucketFraction: Double,
     /** How many pixels were sampled. */
@@ -71,6 +74,13 @@ data class ImageToneStats(
  * Saturation and the palette size guard the remaining case — a bright, flat,
  * high-contrast *colour* graphic (an infographic, a poster, a muted photograph)
  * that inverting would only disfigure.
+ *
+ * These are histogram tests, blind to layout, so a photograph that happens to
+ * be *shaped* like a document slips through: a flat, bright, near-grey scene
+ * with a few dark objects (fog, snow, a grey gadget on a white backdrop) is,
+ * pixel for pixel, black marks on paper. Telling those apart needs spatial
+ * structure — text is edges everywhere, a gradient is edges nowhere — and that
+ * waits for a corpus to tune it on. The reader's toggle is the remedy meanwhile.
  *
  * Worth noting for anyone who reaches for it: WebView's own algorithmic
  * darkening cannot do this. Blink's force-dark classifier only ever runs on
@@ -104,10 +114,14 @@ object ImageTone {
      * zero: an ink pixel of rgb(3, 1, 0) — visually black — reads as *fully*
      * saturated. Ordinary noise in black text therefore piles spurious colour
      * onto exactly the guards that reject colour graphics, and an ink-dense
-     * screenshot gets thrown out as one. Below this level there is no hue worth
-     * measuring, so there is none.
+     * screenshot gets thrown out as one. Subpixel antialiasing is the other
+     * source: the dark side of every glyph edge is a strongly tinted near-black,
+     * and those alone read as 0.10-0.13 vivid on a plain Windows screenshot (a
+     * tenth less at 64 than at 32) — room the vivid limit would rather keep for
+     * a coloured toolbar. Below this level there is no hue worth measuring, so
+     * there is none.
      */
-    const val CHROMA_FLOOR = 32
+    const val CHROMA_FLOOR = 64
 
     /** Bits per channel the colour buckets are quantised to (16 levels each). */
     const val COLOR_BUCKET_BITS = 4
@@ -117,9 +131,13 @@ object ImageTone {
 
     // The paper has to dominate, but not to the point of being blank: an image
     // with no ink gains nothing from being flipped, and a light-ink-on-alpha
-    // graphic (already made for dark backgrounds) would be ruined by it.
+    // graphic (already made for dark backgrounds) — which the white composite
+    // turns into a blank — would be ruined by it. The ink floor is set by how
+    // little a *diagram* has: 2px lines and labels on a 1000x700 canvas sample
+    // at 0.3-0.5% ink (measured in Chromium), a tenth of what a page of text
+    // carries, and those are the images that vanish on a dark page.
     private const val MIN_LIGHT = 0.55
-    private const val MIN_DARK = 0.015
+    private const val MIN_DARK = 0.002
     // Implied by MIN_LIGHT today — the sampler's bins are disjoint, so light and
     // dark can't sum past 1 — and kept as the independent statement of intent,
     // which is what would still hold if MIN_LIGHT ever moved.
@@ -134,8 +152,13 @@ object ImageTone {
 
     // Colour guards: a screenshot may carry a coloured toolbar or syntax
     // highlighting, but a colour *graphic* should be left as its designer drew it.
-    private const val MAX_MEAN_SATURATION = 0.12
-    private const val MAX_VIVID = 0.15
+    // The limits sit in the gap between the two populations as measured
+    // (scripts/image-tone-lab.sh): subpixel-antialiased black-on-white text
+    // alone reads 0.11 / 0.13 — every glyph edge is a tinted fringe — while the
+    // least colourful graphics that must stay out (a chat with blue bubbles, a
+    // dark purple sidebar, a bar chart) read 0.17 / 0.20 and up.
+    private const val MAX_MEAN_SATURATION = 0.15
+    private const val MAX_VIVID = 0.18
 
     // Palette size — the feature both shipped classifiers of this kind rank
     // first (Chromium's force-dark decision tree, mod_pagespeed's illustration
@@ -149,8 +172,10 @@ object ImageTone {
 
     // A bright panel inside a dark frame (a letterboxed still, a dark-themed
     // screenshot with a white content pane) would invert into a glaring white
-    // border, so the margin has to be bright too.
-    private const val MIN_BORDER_LIGHT = 0.60
+    // border, so the margin has to be bright too. Half, not more: when a shot
+    // is cropped tight the ring runs through the text itself, and a dense
+    // terminal measures 0.59 there while a frame on two sides measures 0.41.
+    private const val MIN_BORDER_LIGHT = 0.50
 
     /** True when [stats] describe a bright document worth flipping for a dark page. */
     fun shouldInvert(stats: ImageToneStats): Boolean {
