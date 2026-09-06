@@ -4,9 +4,15 @@ package ch.lkmc.kararead.reader
  * What a sample of one article image looks like, measured in the reader's
  * WebView (canvas) and handed to [ImageTone] over the JS bridge.
  *
- * Every fraction is over the sampled pixels, 0..1. The sampler composites the
- * image over **white** first, so a transparent PNG of dark line art — the case
- * that goes completely invisible on a dark page — reads as ink on paper.
+ * Every fraction lies in 0..1, but they do not share a denominator: light,
+ * dark, vivid and peak are over all the sampled pixels, [borderLightFraction]
+ * over its edge ring alone, and [colorBucketFraction] over the colour buckets.
+ * The thresholds in [ImageTone] are calibrated per denominator, so re-deriving
+ * the sampler as if they were all per-pixel would quietly move two of them.
+ *
+ * The sampler composites the image over **white** first, so a transparent PNG
+ * of dark line art — the case that goes completely invisible on a dark page —
+ * reads as ink on paper.
  */
 data class ImageToneStats(
     /** Pixels at or above [ImageTone.LIGHT_LEVEL] luminance: the "paper". */
