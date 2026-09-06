@@ -217,8 +217,8 @@ object ImageTone {
     /** True when [stats] describe a bright document worth flipping for a dark page. */
     fun shouldInvert(stats: ImageToneStats): Boolean {
         if (stats.samples < MIN_SAMPLES) return false
-        if (stats.clearFraction > LIGHT_ART_MIN_CLEAR &&
-            stats.opaqueLightFraction > LIGHT_ART_MIN_OPAQUE_LIGHT
+        if (stats.clearFraction >= LIGHT_ART_MIN_CLEAR &&
+            stats.opaqueLightFraction >= LIGHT_ART_MIN_OPAQUE_LIGHT
         ) return false
         val mid = (1.0 - stats.lightFraction - stats.darkFraction).coerceAtLeast(0.0)
         return stats.lightFraction >= MIN_LIGHT &&

@@ -123,6 +123,11 @@ class AssetLoader @Inject constructor(
             // the measuring copy would fail and the image would stay glaring.
             val imageLike = mime.startsWith("image/", ignoreCase = true) ||
                 mime.endsWith("/octet-stream", ignoreCase = true)
+            // What this header makes readable, it makes readable to any script
+            // in the reader document — including one an article smuggled in.
+            // It rests on ReaderHtmlBuilder cleaning article HTML through a
+            // Jsoup Safelist, which leaves no <script>, no on* handler and no
+            // javascript: URL, so the only script on the page is the reader's.
             if (response.request.header("Authorization") == null && imageLike) {
                 setResponseHeaders(CORS_HEADERS)
             }

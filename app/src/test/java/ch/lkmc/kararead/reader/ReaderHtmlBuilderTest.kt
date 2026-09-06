@@ -418,6 +418,9 @@ class ReaderHtmlBuilderTest {
         val call = out.substringAfter("AndroidReader.shouldInvertImage(", missingDelimiterValue = "")
             .substringBefore(")")
             .replace(Regex("\\s+"), "")
+        // One call site, so a second has to come through this test rather than
+        // past it: the pin only reads the first match.
+        assertEquals(1, Regex("AndroidReader\\.shouldInvertImage\\(").findAll(out).count())
         assertEquals(
             "s.light,s.dark,s.sat,s.vivid,s.border,s.peak,s.peakLevel,s.colors,s.samples," +
                 "s.clear,s.opaqueLight",

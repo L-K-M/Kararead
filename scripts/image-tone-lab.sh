@@ -43,8 +43,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --set) [[ "${2:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*=[0-9]+(\.[0-9]+)?$ ]] || { echo "!! --set wants NAME=NUMBER" >&2; exit 2; }
            OVERRIDES+=("$2"); shift 2 ;;
-    --html) KEEP_HTML="${2:?--html wants a path}"
-            [[ "$KEEP_HTML" == /* ]] || KEEP_HTML="$CALLER_PWD/$KEEP_HTML"; shift 2 ;;
+    --html) [[ -n "${2:-}" ]] || { echo "!! --html wants a path" >&2; exit 2; }
+            KEEP_HTML="$2"; [[ "$KEEP_HTML" == /* ]] || KEEP_HTML="$CALLER_PWD/$KEEP_HTML"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -118,7 +118,7 @@ cat <<'EOF'
 function verdict(s){
   var mid = Math.max(0, 1 - s.light - s.dark), fails = [];
   if (!(s.samples >= K.MIN_SAMPLES)) fails.push('samples');
-  if (s.clear > K.LIGHT_ART_MIN_CLEAR && s.opaqueLight > K.LIGHT_ART_MIN_OPAQUE_LIGHT) fails.push('lightArtOnAlpha');
+  if (s.clear >= K.LIGHT_ART_MIN_CLEAR && s.opaqueLight >= K.LIGHT_ART_MIN_OPAQUE_LIGHT) fails.push('lightArtOnAlpha');
   if (!(s.light >= K.MIN_LIGHT)) fails.push('light<' + K.MIN_LIGHT);
   if (!(s.dark >= K.MIN_DARK)) fails.push('dark<' + K.MIN_DARK);
   if (!(s.dark <= K.MAX_DARK)) fails.push('dark>' + K.MAX_DARK);
@@ -326,7 +326,7 @@ add('bright_muted_photo', false, true, 1200, 800, function(ctx, w, h){
 var art = document.getElementById('art');
 cases.forEach(function(c){
   var fig = document.createElement('figure'), img = new Image(), cap = document.createElement('figcaption');
-  img.setAttribute('data-name', c.name); img.setAttribute('data-expect', String(c.expect)); img.setAttribute('data-known', c.known ? '1' : '');
+  img.setAttribute('data-name', c.name); img.setAttribute('data-expect', String(c.expect)); if (c.known) img.setAttribute('data-known', '1');
   img.src = c.url; cap.textContent = c.name; fig.appendChild(img); fig.appendChild(cap); art.appendChild(fig);
 });
 </script>
@@ -359,6 +359,12 @@ window.addEventListener('load', function(){ setTimeout(report, 3000); });
 EOF
 } > "$HTML"
 
+# The judge is a hand-written mirror of shouldInvert, so a constant the Kotlin
+# reads that the mirror never tests means the mirror has drifted.
+while read -r c; do
+  grep -qE "K\.$c([^A-Z_]|$)" "$HTML" || { echo "!! shouldInvert reads $c but the lab's judge never tests it" >&2; exit 1; }
+done < <(awk '/fun shouldInvert/,/^    }/' "$TONE" | grep -oE '[A-Z][A-Z_]{2,}' | sort -u)
+
 [[ -n "$KEEP_HTML" ]] && echo "==> Page written to $HTML"
 
 CHROME="${CHROME:-}"
@@ -380,7 +386,10 @@ echo "==> Sampling in $CHROME"
 # it generated itself. Revisit before pointing the sampler at remote images.
 # --virtual-time-budget lets the page's timers and image decodes settle before
 # the DOM is dumped; the report is the <pre> the page appends at the end.
-DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars \
+# A profile of its own: the new headless mode otherwise opens the default one,
+# and hands the page to a desktop Chrome already running on it, which then
+# dumps nothing.
+DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --user-data-dir="$TMP/chrome-profile" \
   --virtual-time-budget=30000 --dump-dom "file://$HTML" 2>"$TMP/chrome.err" || true)"
 REPORT="$(printf '%s\n' "$DOM" | sed -n '/<pre id="report">/,/<\/pre>/p' | sed -e 's/.*<pre id="report">//' -e 's/<\/pre>.*//' \
   -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e 's/&amp;/\&/g')"
