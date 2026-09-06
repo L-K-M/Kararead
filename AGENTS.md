@@ -30,6 +30,9 @@ library — an independent, unofficial client. Product rationale and roadmap liv
 ./gradlew assembleDebug        # debug APK
 scripts/install.sh             # build + adb install + launch the debug build on a device
 scripts/install.sh --release   # …the (debug-signed) release build instead
+scripts/image-tone-lab.sh      # run the reader's image-tone sampler in a headless Chromium
+                               # against synthetic screenshots/photos; do this before
+                               # touching a threshold in ImageTone.kt
 ```
 
 There are no instrumentation tests (`app/src/androidTest` does not exist), so
