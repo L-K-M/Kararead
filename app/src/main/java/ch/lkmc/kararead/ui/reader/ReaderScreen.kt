@@ -711,6 +711,7 @@ fun ReaderScreen(
             onLineHeight = viewModel::setLineHeight,
             onMargin = viewModel::setMargin,
             onJustify = viewModel::setJustify,
+            onInvertBrightImages = viewModel::setInvertBrightImages,
             onKeepScreenOn = viewModel::setKeepScreenOn,
             onVolumeKeyPaging = viewModel::setVolumeKeyPaging,
         )
