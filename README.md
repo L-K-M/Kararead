@@ -5,6 +5,9 @@
 
 # Kararead
 
+> [!IMPORTANT]
+> LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
+
 **An Instapaper-style reader for your [Karakeep](https://karakeep.app) library.**
 
 <a href="./screenshots/home.jpeg">
