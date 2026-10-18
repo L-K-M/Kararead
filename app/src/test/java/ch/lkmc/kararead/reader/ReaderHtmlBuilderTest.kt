@@ -301,4 +301,130 @@ class ReaderHtmlBuilderTest {
         assertTrue(out.contains("--kr-hl:"))
         assertTrue(out.contains("background: var(--kr-hl"))
     }
+
+    @Test
+    fun `image inversion is armed only on the dark themes`() {
+        fun scanArmed(theme: ReaderTheme, invert: Boolean = true) = ReaderHtmlBuilder.build(
+            article("<p>x</p>"),
+            ReaderPreferences(theme = theme, invertBrightImages = invert),
+        ).contains("krApplyImageInvert(true)")
+
+        assertTrue(scanArmed(ReaderTheme.DARK))
+        assertTrue(scanArmed(ReaderTheme.BLACK))
+        assertFalse(scanArmed(ReaderTheme.LIGHT))
+        assertFalse(scanArmed(ReaderTheme.SEPIA))
+        // …and never when the reader has been told not to.
+        assertFalse(scanArmed(ReaderTheme.DARK, invert = false))
+        assertFalse(scanArmed(ReaderTheme.BLACK, invert = false))
+    }
+
+    @Test
+    fun `invert strength lands an inverted white on the page background`() {
+        // invert(a) maps white to 1-a, so the amount is chosen per theme to put
+        // a screenshot's paper exactly on the page instead of punching a black
+        // hole in it: 0.9 -> #1a1a1a for Dark, 1 -> #000000 for Black.
+        assertEquals("0.9", ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK).imageInvert)
+        assertEquals("1", ReaderHtmlBuilder.paletteFor(ReaderTheme.BLACK).imageInvert)
+        assertEquals("0", ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT).imageInvert)
+        assertEquals("0", ReaderHtmlBuilder.paletteFor(ReaderTheme.SEPIA).imageInvert)
+
+        // The CSS carries whatever the palette says, checked through the palette
+        // rather than as a second copy of the number: retuning Dark should fail
+        // the one assertion above, not a regex here and another further down.
+        val dark = ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK)
+        val css = ReaderHtmlBuilder.variableCss(dark, ReaderPreferences(theme = ReaderTheme.DARK))
+        val strength = Regex.escape(dark.imageInvert)
+        assertTrue(Regex("--kr-img-invert:\\s*$strength(?![0-9.])").containsMatchIn(css))
+    }
+
+    @Test
+    fun `the inversion filter only applies under the root class`() {
+        // Light themes must not composite a filter at all, so the rule is gated
+        // on a class the script only sets when inversion is on.
+        val out = ReaderHtmlBuilder.build(
+            article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
+        )
+        assertTrue(out.contains("html.kr-invert-images .kr-article img.kr-bright"))
+        assertTrue(out.contains("filter: invert(var(--kr-img-invert, 1)) hue-rotate(180deg)"))
+    }
+
+    @Test
+    fun `a preference change re-applies the image inversion without a reload`() {
+        val dark = ReaderHtmlBuilder.paletteFor(ReaderTheme.DARK)
+        val on = ReaderHtmlBuilder.applyPrefsScript(
+            dark, ReaderPreferences(theme = ReaderTheme.DARK, invertBrightImages = true),
+        )
+        assertTrue(on.contains("krApplyImageInvert(true)"))
+        assertTrue(on.contains("'--kr-img-invert', '${dark.imageInvert}'"))
+
+        val off = ReaderHtmlBuilder.applyPrefsScript(
+            dark, ReaderPreferences(theme = ReaderTheme.DARK, invertBrightImages = false),
+        )
+        assertTrue(off.contains("krApplyImageInvert(false)"))
+        assertFalse(off.contains("krApplyImageInvert(true)"))
+
+        // And switching back to a light theme disarms it even with the
+        // preference still on. Worth pinning rather than assuming: the class is
+        // the only thing holding the filter off, and were it left set, the
+        // companion hue-rotate(180deg) would shift the colours of every marked
+        // image on a light page — invert(0) is the no-op, hue-rotate is not.
+        val backToLight = ReaderHtmlBuilder.applyPrefsScript(
+            ReaderHtmlBuilder.paletteFor(ReaderTheme.LIGHT),
+            ReaderPreferences(theme = ReaderTheme.LIGHT, invertBrightImages = true),
+        )
+        assertTrue(backToLight.contains("krApplyImageInvert(false)"))
+        assertFalse(backToLight.contains("krApplyImageInvert(true)"))
+    }
+
+    @Test
+    fun `the tone sampler and the Kotlin judge share one set of thresholds`() {
+        // The page measures pixels, ImageTone judges them — so the levels the
+        // sampler counts against have to be the ones the judge was tuned for.
+        val out = ReaderHtmlBuilder.build(
+            article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
+        )
+        // Anchored per constant rather than matched as a line: reformatting the
+        // embedded JS mustn't break a test that is about the shared numbers, and
+        // a bare substring would take `DARK = 96` out of `PEAK_DARK = 964` or
+        // out of `s.DARK = 96`.
+        fun pinned(name: String, value: Any) = assertTrue(
+            "expected JS constant $name = $value",
+            Regex("(?<![A-Za-z0-9_.])$name\\s*=\\s*${Regex.escape(value.toString())}(?![0-9.])")
+                .containsMatchIn(out),
+        )
+        pinned("LIGHT", ImageTone.LIGHT_LEVEL)
+        pinned("DARK", ImageTone.DARK_LEVEL)
+        pinned("VIVID", ImageTone.VIVID_SATURATION)
+        pinned("BUCKET_BITS", ImageTone.COLOR_BUCKET_BITS)
+        pinned("CHROMA", ImageTone.CHROMA_FLOOR)
+        pinned("CLEAR_ALPHA", ImageTone.CLEAR_ALPHA)
+        pinned("OPAQUE_ALPHA", ImageTone.OPAQUE_ALPHA)
+    }
+
+    @Test
+    fun `the sampler hands the bridge its arguments in the declared order`() {
+        // The page calls ReaderBridge.shouldInvertImage positionally, and a JS
+        // string has no compile-time link to a Kotlin signature: swap two of
+        // these and every image is misjudged with nothing failing. This pins the
+        // JS side only — pinning the Kotlin parameter order too would want
+        // kotlin-reflect, which isn't a dependency here, so that half rests on
+        // the cross-reference in the bridge's KDoc.
+        val out = ReaderHtmlBuilder.build(
+            article("<p>x</p>"), ReaderPreferences(theme = ReaderTheme.DARK),
+        )
+        // Anchored on the bound name so the feature-detect mention can't be
+        // picked up instead, and stripped of whitespace entirely so only the
+        // order is under test.
+        val call = out.substringAfter("AndroidReader.shouldInvertImage(", missingDelimiterValue = "")
+            .substringBefore(")")
+            .replace(Regex("\\s+"), "")
+        // One call site, so a second has to come through this test rather than
+        // past it: the pin only reads the first match.
+        assertEquals(1, Regex("AndroidReader\\.shouldInvertImage\\(").findAll(out).count())
+        assertEquals(
+            "s.light,s.dark,s.sat,s.vivid,s.border,s.peak,s.peakLevel,s.colors,s.samples," +
+                "s.clear,s.opaqueLight",
+            call,
+        )
+    }
 }
