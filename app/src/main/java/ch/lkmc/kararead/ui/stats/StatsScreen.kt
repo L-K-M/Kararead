@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -36,7 +37,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.lkmc.kararead.ui.components.MessageState
 import ch.lkmc.kararead.util.DayMinutes
 import java.time.format.TextStyle
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,7 +199,13 @@ private fun BarChart(days: List<DayMinutes>) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    day.date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
+                    // LocalLocale (not Locale.getDefault()): observable, so a
+                    // system locale change recomposes the labels (compose-ui
+                    // lint NonObservableLocale is error-severity).
+                    day.date.dayOfWeek.getDisplayName(
+                        TextStyle.NARROW,
+                        LocalLocale.current.platformLocale,
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
