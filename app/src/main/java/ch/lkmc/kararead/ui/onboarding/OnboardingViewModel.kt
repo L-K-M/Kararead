@@ -15,6 +15,7 @@ import javax.inject.Inject
 
 data class OnboardingUiState(
     val serverUrl: String = "",
+    val fallbackUrl: String = "",
     val apiKey: String = "",
     val isConnecting: Boolean = false,
     val error: String? = null,
@@ -31,6 +32,7 @@ class OnboardingViewModel @Inject constructor(
     val state: StateFlow<OnboardingUiState> = _state
 
     fun onServerUrlChange(value: String) = _state.update { it.copy(serverUrl = value, error = null) }
+    fun onFallbackUrlChange(value: String) = _state.update { it.copy(fallbackUrl = value, error = null) }
     fun onApiKeyChange(value: String) = _state.update { it.copy(apiKey = value, error = null) }
 
     fun connect(onSuccess: () -> Unit) {
@@ -41,7 +43,11 @@ class OnboardingViewModel @Inject constructor(
         }
         _state.update { it.copy(isConnecting = true, error = null) }
         viewModelScope.launch {
-            val settingsToTest = ConnectionSettings(s.serverUrl.trim(), s.apiKey.trim())
+            val settingsToTest = ConnectionSettings(
+                serverUrl = s.serverUrl.trim(),
+                apiKey = s.apiKey.trim(),
+                fallbackUrl = s.fallbackUrl.trim(),
+            )
             when (val result = repository.testConnection(settingsToTest)) {
                 is ConnectionResult.Success -> {
                     settings.saveConnection(settingsToTest)

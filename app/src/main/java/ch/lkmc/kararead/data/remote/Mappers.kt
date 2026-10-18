@@ -1,6 +1,7 @@
 package ch.lkmc.kararead.data.remote
 
 import ch.lkmc.kararead.data.local.CachedArticleEntity
+import ch.lkmc.kararead.data.local.CachedBookmarkRow
 import ch.lkmc.kararead.data.model.Bookmark
 import ch.lkmc.kararead.data.model.ContentType
 import ch.lkmc.kararead.data.model.Highlight
@@ -22,7 +23,16 @@ import ch.lkmc.kararead.util.parseIsoToMillis
  * supplied [assetUrl] resolver (backed by [ApiProvider]).
  */
 
-fun BookmarkDto.toDomain(assetUrl: (String) -> String?): Bookmark {
+fun BookmarkDto.toDomain(
+    assetUrl: (String) -> String?,
+    /**
+     * Plain text of the article body, when the caller already extracted it.
+     * Without it, mapping one bookmark used to run Jsoup over the full HTML
+     * up to three times (excerpt, reading time, reader text) on the main
+     * thread while the open-transition animation played.
+     */
+    plainTextOverride: String? = null,
+): Bookmark {
     val link = content as? ContentDto.Link
     val text = content as? ContentDto.Text
     val asset = content as? ContentDto.Asset
@@ -31,10 +41,12 @@ fun BookmarkDto.toDomain(assetUrl: (String) -> String?): Bookmark {
         ?: link?.imageUrl
     val resolvedFavicon = link?.favicon
 
+    val plain = plainTextOverride ?: htmlToPlainText(link?.htmlContent) ?: text?.text
+
     val url = link?.url ?: text?.sourceUrl ?: asset?.sourceUrl
     val derivedExcerpt = link?.description
         ?: summary
-        ?: excerptFrom(htmlToPlainText(link?.htmlContent) ?: text?.text)
+        ?: excerptFrom(plain)
 
     return Bookmark(
         id = id,
@@ -53,7 +65,7 @@ fun BookmarkDto.toDomain(assetUrl: (String) -> String?): Bookmark {
         tags = tags.map { it.name },
         note = note,
         summary = summary,
-        readingTimeMinutes = estimateReadingMinutes(htmlToPlainText(link?.htmlContent) ?: text?.text),
+        readingTimeMinutes = estimateReadingMinutes(plain),
         contentType = when (content) {
             is ContentDto.Link -> ContentType.LINK
             is ContentDto.Text -> ContentType.TEXT
@@ -69,10 +81,32 @@ fun BookmarkDto.toReaderArticle(assetUrl: (String) -> String?): ReaderArticle {
     val html = link?.htmlContent
     val plain = htmlToPlainText(html) ?: text?.text
     return ReaderArticle(
-        bookmark = toDomain(assetUrl),
-        htmlContent = html ?: text?.text?.let { "<p>${it.replace("\n\n", "</p><p>")}</p>" },
+        bookmark = toDomain(assetUrl, plainTextOverride = plain),
+        htmlContent = html ?: text?.text?.let { plainTextToHtml(it) },
         textContent = plain,
     )
+}
+
+/**
+ * Turn a plain-text note ([ContentDto.Text]) into safe reader HTML.
+ *
+ * Crucially this HTML-escapes the text first: an un-escaped `<`, `>` or `&`
+ * would be parsed as markup by the reader's Jsoup sanitizer and then silently
+ * stripped — dropping the user's own words (e.g. "a < b", "I love <html>").
+ * Blank-line-separated paragraphs become `<p>` blocks and single newlines
+ * become `<br>`, so the note keeps its shape.
+ */
+internal fun plainTextToHtml(text: String): String {
+    val escaped = text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    return escaped
+        .split(Regex("\\n{2,}"))
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .joinToString("") { "<p>${it.replace("\n", "<br>")}</p>" }
+        .ifEmpty { "<p></p>" }
 }
 
 fun ReaderArticle.toCacheEntity(now: Long): CachedArticleEntity = CachedArticleEntity(
@@ -89,6 +123,8 @@ fun ReaderArticle.toCacheEntity(now: Long): CachedArticleEntity = CachedArticleE
     createdAt = bookmark.createdAt,
     datePublished = bookmark.datePublished,
     readingTimeMinutes = bookmark.readingTimeMinutes,
+    archived = bookmark.archived,
+    favourited = bookmark.favourited,
     cachedAt = now,
 )
 
@@ -104,8 +140,8 @@ fun CachedArticleEntity.toReaderArticle(): ReaderArticle = ReaderArticle(
         imageUrl = imageUrl,
         createdAt = createdAt,
         datePublished = datePublished,
-        archived = false,
-        favourited = false,
+        archived = archived,
+        favourited = favourited,
         tags = emptyList(),
         note = null,
         summary = null,
@@ -114,6 +150,27 @@ fun CachedArticleEntity.toReaderArticle(): ReaderArticle = ReaderArticle(
     ),
     htmlContent = html,
     textContent = text,
+)
+
+/** Cached-article metadata → domain [Bookmark], for the offline list fallback. */
+fun CachedBookmarkRow.toBookmark(): Bookmark = Bookmark(
+    id = bookmarkId,
+    title = title,
+    url = url,
+    siteName = siteName,
+    author = author,
+    excerpt = excerpt,
+    faviconUrl = faviconUrl,
+    imageUrl = imageUrl,
+    createdAt = createdAt,
+    datePublished = datePublished,
+    archived = archived,
+    favourited = favourited,
+    tags = emptyList(),
+    note = null,
+    summary = null,
+    readingTimeMinutes = readingTimeMinutes,
+    contentType = ContentType.LINK,
 )
 
 fun ListDto.toDomain(): KarakeepList = KarakeepList(

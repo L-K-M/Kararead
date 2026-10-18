@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Kararead" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- windowBackground matches the Compose light background so the first
+         frame doesn't flash a foreign color; values-night overrides both the
+         parent and the background for dark mode. -->
+    <style name="Theme.Kararead" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
 
     <style name="Theme.Kararead.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>

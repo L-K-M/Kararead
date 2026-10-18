@@ -23,6 +23,9 @@ interface ReadingProgressDao {
 
     @Query("DELETE FROM reading_progress WHERE bookmarkId = :id")
     suspend fun delete(id: String)
+
+    @Query("DELETE FROM reading_progress")
+    suspend fun clear()
 }
 
 @Dao
@@ -30,7 +33,6 @@ interface CachedArticleDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(article: CachedArticleEntity)
-
     @Query("SELECT * FROM cached_article WHERE bookmarkId = :id")
     suspend fun get(id: String): CachedArticleEntity?
 
@@ -40,12 +42,202 @@ interface CachedArticleDao {
     @Query("DELETE FROM cached_article WHERE bookmarkId = :id")
     suspend fun delete(id: String)
 
+    /** Mark a cached article as just-used, so age-based cleanup spares it. */
+    @Query("UPDATE cached_article SET cachedAt = :now WHERE bookmarkId = :id")
+    suspend fun touch(id: String, now: Long)
+
     @Query("DELETE FROM cached_article WHERE cachedAt < :threshold")
     suspend fun deleteOlderThan(threshold: Long)
 
     @Query("SELECT COUNT(*) FROM cached_article")
     suspend fun count(): Int
 
+    @Query("SELECT bookmarkId FROM cached_article")
+    fun observeIds(): Flow<List<String>>
+
+    @Query("SELECT bookmarkId FROM cached_article")
+    suspend fun ids(): List<String>
+
+    /** Reading-time hints captured when articles were cached (for list cards). */
+    @Query("SELECT bookmarkId, readingTimeMinutes FROM cached_article WHERE readingTimeMinutes IS NOT NULL")
+    fun observeReadingTimes(): Flow<List<ReadingTimeRow>>
+
+    /**
+     * Metadata of every cached article (no html/text body), newest first. Backs
+     * the library's offline fallback: when a listing can't be fetched, the
+     * downloaded articles are shown from here instead of a "couldn't load" error.
+     */
+    @Query(
+        """
+        SELECT bookmarkId, title, url, siteName, author, excerpt, imageUrl, faviconUrl,
+               createdAt, datePublished, readingTimeMinutes, archived, favourited
+        FROM cached_article
+        ORDER BY createdAt DESC
+        """,
+    )
+    fun observeCachedBookmarks(): Flow<List<CachedBookmarkRow>>
+
+    /**
+     * Recently *opened* articles, newest first: cached articles that also have a
+     * reading-progress row (i.e. the user actually read them). Joining on
+     * reading_progress excludes offline-prefetched-but-unopened articles. Archived
+     * (read) articles are excluded explicitly — opening one from the Archive tab
+     * re-caches it, which would otherwise resurrect it in "jump back in".
+     */
+    @Query(
+        """
+        SELECT c.bookmarkId AS bookmarkId, c.title AS title, c.imageUrl AS imageUrl,
+               p.fraction AS fraction, p.updatedAt AS lastOpened
+        FROM reading_progress p
+        INNER JOIN cached_article c ON c.bookmarkId = p.bookmarkId
+        WHERE c.archived = 0
+        ORDER BY p.updatedAt DESC
+        LIMIT :limit
+        """,
+    )
+    fun observeRecent(limit: Int): Flow<List<RecentArticleRow>>
+
     @Query("DELETE FROM cached_article")
+    suspend fun clear()
+}
+
+/** Projection of a cached article's reading-time hint. */
+data class ReadingTimeRow(
+    val bookmarkId: String,
+    val readingTimeMinutes: Int,
+)
+
+/** Projection of a cached article's metadata (no body), for the offline list. */
+data class CachedBookmarkRow(
+    val bookmarkId: String,
+    val title: String,
+    val url: String?,
+    val siteName: String?,
+    val author: String?,
+    val excerpt: String?,
+    val imageUrl: String?,
+    val faviconUrl: String?,
+    val createdAt: Long,
+    val datePublished: Long?,
+    val readingTimeMinutes: Int?,
+    val archived: Boolean,
+    val favourited: Boolean,
+)
+
+/** Projection for the library's "recently opened" strip. */
+data class RecentArticleRow(
+    val bookmarkId: String,
+    val title: String,
+    val imageUrl: String?,
+    val fraction: Float,
+    val lastOpened: Long,
+)
+
+@Dao
+interface PendingOpDao {
+
+    /** Queue an op, replacing any existing one for the same bookmark+field. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(op: PendingOpEntity)
+
+    /** Oldest first, so replays preserve the order the user made them. */
+    @Query("SELECT * FROM pending_op ORDER BY createdAt ASC")
+    suspend fun all(): List<PendingOpEntity>
+
+    @Query("DELETE FROM pending_op WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    /** The queued op for one bookmark+field, if any. */
+    @Query("SELECT * FROM pending_op WHERE bookmarkId = :bookmarkId AND type = :type")
+    suspend fun getFor(bookmarkId: String, type: String): PendingOpEntity?
+
+    /** Drop the queued op for one bookmark+field (it was superseded online). */
+    @Query("DELETE FROM pending_op WHERE bookmarkId = :bookmarkId AND type = :type")
+    suspend fun deleteFor(bookmarkId: String, type: String)
+
+    @Query("UPDATE pending_op SET attempts = :attempts WHERE id = :id")
+    suspend fun setAttempts(id: Long, attempts: Int)
+
+    @Query("SELECT COUNT(*) FROM pending_op")
+    fun observeCount(): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("DELETE FROM pending_op")
+    suspend fun clear()
+}
+
+@Dao
+interface ReadingStatsDao {
+
+    @Query("SELECT * FROM reading_day WHERE date = :date")
+    suspend fun get(date: String): ReadingDayEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(day: ReadingDayEntity)
+
+    @Query("SELECT * FROM reading_day ORDER BY date DESC")
+    fun observeAll(): Flow<List<ReadingDayEntity>>
+
+    @Query("DELETE FROM reading_day")
+    suspend fun clear()
+}
+
+@Dao
+interface CachedHighlightDao {
+
+    @Query("SELECT * FROM cached_highlight WHERE bookmarkId = :bookmarkId ORDER BY startOffset ASC")
+    fun observeForBookmark(bookmarkId: String): Flow<List<CachedHighlightEntity>>
+
+    @Query("SELECT * FROM cached_highlight WHERE id = :id")
+    suspend fun get(id: String): CachedHighlightEntity?
+
+    @Query("SELECT * FROM cached_highlight ORDER BY updatedAt DESC")
+    suspend fun all(): List<CachedHighlightEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(highlight: CachedHighlightEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(highlights: List<CachedHighlightEntity>)
+
+    @Query("DELETE FROM cached_highlight WHERE id = :id")
+    suspend fun delete(id: String)
+
+    /** Drop the server-backed rows for a bookmark, keeping unsynced local ones. */
+    @Query("DELETE FROM cached_highlight WHERE bookmarkId = :bookmarkId AND synced = 1")
+    suspend fun deleteSyncedForBookmark(bookmarkId: String)
+
+    @Query("DELETE FROM cached_highlight")
+    suspend fun clear()
+}
+
+@Dao
+interface HighlightOpDao {
+
+    @Insert
+    suspend fun insert(op: HighlightOpEntity): Long
+
+    @Query("SELECT * FROM highlight_op ORDER BY id ASC")
+    suspend fun all(): List<HighlightOpEntity>
+
+    @Query("DELETE FROM highlight_op WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM highlight_op WHERE highlightId = :highlightId")
+    suspend fun deleteForHighlight(highlightId: String)
+
+    @Query("DELETE FROM highlight_op WHERE highlightId = :highlightId AND type = :type")
+    suspend fun deleteForHighlightAndType(highlightId: String, type: String)
+
+    /** Rewrite a queued local id to the server id once a create has synced. */
+    @Query("UPDATE highlight_op SET highlightId = :newId WHERE highlightId = :oldId")
+    suspend fun remapHighlightId(oldId: String, newId: String)
+
+    @Query("UPDATE highlight_op SET attempts = :attempts WHERE id = :id")
+    suspend fun setAttempts(id: Long, attempts: Int)
+
+    @Query("SELECT COUNT(*) FROM highlight_op")
+    fun observeCount(): Flow<Int>
+
+    @Query("DELETE FROM highlight_op")
     suspend fun clear()
 }

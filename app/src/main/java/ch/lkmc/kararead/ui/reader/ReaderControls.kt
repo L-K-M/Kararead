@@ -2,44 +2,56 @@ package ch.lkmc.kararead.ui.reader
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ch.lkmc.kararead.data.model.ReaderFont
 import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.data.model.ReaderTheme
+import ch.lkmc.kararead.data.model.resolve
 import ch.lkmc.kararead.reader.ReaderHtmlBuilder
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReaderControlsSheet(
     prefs: ReaderPreferences,
@@ -51,84 +63,102 @@ fun ReaderControlsSheet(
     onMargin: (Int) -> Unit,
     onJustify: (Boolean) -> Unit,
     onKeepScreenOn: (Boolean) -> Unit,
+    onVolumeKeyPaging: (Boolean) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val fontFamilies = rememberReaderFontFamilies()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.9f)
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+                .padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("Reading", style = MaterialTheme.typography.titleLarge)
 
-            // Theme swatches
-            SectionLabel("Theme")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ReaderTheme.entries.forEach { theme ->
-                    ThemeSwatch(
-                        theme = theme,
-                        selected = prefs.theme == theme,
-                        onClick = { onTheme(theme) },
-                    )
-                }
-            }
+            // Live preview, pinned above the scrolling controls so the effect of
+            // every change stays visible while you adjust.
+            PreviewCard(prefs, fontFamilies)
 
-            // Font family
-            SectionLabel("Typeface")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                val fonts = ReaderFont.entries
-                fonts.forEachIndexed { index, font ->
-                    SegmentedButton(
-                        selected = prefs.font == font,
-                        onClick = { onFont(font) },
-                        shape = SegmentedButtonDefaults.itemShape(index, fonts.size),
-                    ) {
-                        Text(
-                            fontLabel(font),
-                            fontFamily = when (font) {
-                                ReaderFont.SERIF -> FontFamily.Serif
-                                ReaderFont.MONO -> FontFamily.Monospace
-                                else -> FontFamily.SansSerif
-                            },
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                // Theme swatches
+                SectionLabel("Theme")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ReaderTheme.entries.forEach { theme ->
+                        ThemeSwatch(
+                            theme = theme,
+                            selected = prefs.theme == theme,
+                            onClick = { onTheme(theme) },
                         )
                     }
                 }
+
+                // Font family — with a "shuffle" dice to discover the bundled faces.
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SectionLabel("Typeface")
+                    TextButton(onClick = { onFont(randomReadingFont(prefs.font)) }) {
+                        Icon(Icons.Filled.Casino, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Shuffle")
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReaderFont.entries.forEach { font ->
+                        FilterChip(
+                            selected = prefs.font == font,
+                            onClick = { onFont(font) },
+                            label = { Text(fontLabel(font), fontFamily = fontFamilies[font]) },
+                        )
+                    }
+                }
+
+                // Font size
+                SliderRow(
+                    label = "Text size",
+                    value = prefs.fontScale,
+                    valueRange = 0.7f..2.0f,
+                    steps = 12,
+                    onChange = onFontScale,
+                    valueText = "${(prefs.fontScale * 100).toInt()}%",
+                )
+
+                // Line height
+                SliderRow(
+                    label = "Line spacing",
+                    value = prefs.lineHeight,
+                    valueRange = 1.2f..2.2f,
+                    steps = 9,
+                    onChange = onLineHeight,
+                    valueText = String.format("%.1f", prefs.lineHeight),
+                )
+
+                // Margins
+                SliderRow(
+                    label = "Margins",
+                    value = prefs.horizontalMargin.toFloat(),
+                    valueRange = 0f..48f,
+                    steps = 11,
+                    onChange = { onMargin(it.toInt()) },
+                    valueText = "${prefs.horizontalMargin}",
+                )
+
+                ToggleRow("Justify text", prefs.justify, onJustify)
+                ToggleRow("Keep screen on", prefs.keepScreenOn, onKeepScreenOn)
+                ToggleRow("Volume keys turn pages", prefs.volumeKeyPaging, onVolumeKeyPaging)
+                Spacer(Modifier.height(8.dp))
             }
-
-            // Font size
-            SliderRow(
-                label = "Text size",
-                value = prefs.fontScale,
-                valueRange = 0.7f..2.0f,
-                steps = 12,
-                onChange = onFontScale,
-                valueText = "${(prefs.fontScale * 100).toInt()}%",
-            )
-
-            // Line height
-            SliderRow(
-                label = "Line spacing",
-                value = prefs.lineHeight,
-                valueRange = 1.2f..2.2f,
-                steps = 9,
-                onChange = onLineHeight,
-                valueText = String.format("%.1f", prefs.lineHeight),
-            )
-
-            // Margins
-            SliderRow(
-                label = "Margins",
-                value = prefs.horizontalMargin.toFloat(),
-                valueRange = 0f..48f,
-                steps = 11,
-                onChange = { onMargin(it.toInt()) },
-                valueText = "${prefs.horizontalMargin}",
-            )
-
-            ToggleRow("Justify text", prefs.justify, onJustify)
-            ToggleRow("Keep screen on", prefs.keepScreenOn, onKeepScreenOn)
         }
     }
 }
@@ -144,11 +174,14 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun ThemeSwatch(theme: ReaderTheme, selected: Boolean, onClick: () -> Unit) {
-    val palette = ReaderHtmlBuilder.paletteFor(theme)
+    // The Auto and Sunset swatches preview whatever they resolve to right now.
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val palette = ReaderHtmlBuilder.paletteFor(theme.resolve(systemDark, nowHourOfDay()))
     val bg = runCatching { Color(android.graphics.Color.parseColor(palette.background)) }
         .getOrDefault(Color.White)
     val fg = runCatching { Color(android.graphics.Color.parseColor(palette.text)) }
         .getOrDefault(Color.Black)
+    val label = themeLabel(theme)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         androidx.compose.foundation.layout.Box(
             Modifier
@@ -161,7 +194,15 @@ private fun ThemeSwatch(theme: ReaderTheme, selected: Boolean, onClick: () -> Un
                     else MaterialTheme.colorScheme.outlineVariant,
                     shape = CircleShape,
                 )
-                .clickable(onClick = onClick),
+                // selectable + a name: TalkBack used to hear "Aa" four times
+                // in a row, and the selected swatch announced nothing at all
+                // (its only content was a null-description icon).
+                .selectable(
+                    selected = selected,
+                    role = Role.RadioButton,
+                    onClick = onClick,
+                )
+                .semantics { contentDescription = label },
             contentAlignment = Alignment.Center,
         ) {
             if (selected) {
@@ -195,26 +236,122 @@ private fun SliderRow(
 
 @Composable
 private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    // The whole row toggles and carries merged semantics — TalkBack used to
+    // land on a nameless "switch, on", and tapping the (much larger) label
+    // did nothing. Same pattern as Settings' own ToggleSetting.
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
 private fun themeLabel(theme: ReaderTheme) = when (theme) {
+    ReaderTheme.AUTO -> "Auto"
     ReaderTheme.LIGHT -> "Light"
     ReaderTheme.SEPIA -> "Sepia"
     ReaderTheme.DARK -> "Dark"
     ReaderTheme.BLACK -> "Black"
+    ReaderTheme.SUNSET -> "Sunset"
+}
+
+/** Local hour of day (0..23) so the SUNSET swatch previews the live theme. */
+private fun nowHourOfDay(): Int =
+    java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+
+/** A random bundled reading face (never the current one) for the shuffle dice. */
+private fun randomReadingFont(current: ReaderFont): ReaderFont {
+    val faces = listOf(
+        ReaderFont.LITERATA, ReaderFont.LORA, ReaderFont.SOURCE_SERIF, ReaderFont.NEWSREADER,
+        ReaderFont.CRIMSON, ReaderFont.BITTER, ReaderFont.INTER, ReaderFont.ATKINSON,
+    )
+    return (faces - current).randomOrNull() ?: faces.random()
 }
 
 private fun fontLabel(font: ReaderFont) = when (font) {
-    ReaderFont.SERIF -> "Serif"
-    ReaderFont.SANS -> "Sans"
-    ReaderFont.MONO -> "Mono"
+    ReaderFont.LITERATA -> "Literata"
+    ReaderFont.LORA -> "Lora"
+    ReaderFont.SOURCE_SERIF -> "Source Serif"
+    ReaderFont.NEWSREADER -> "Newsreader"
+    ReaderFont.CRIMSON -> "Crimson"
+    ReaderFont.BITTER -> "Bitter"
+    ReaderFont.INTER -> "Inter"
+    ReaderFont.ATKINSON -> "Atkinson"
     ReaderFont.SYSTEM -> "System"
+    ReaderFont.MONO -> "Mono"
+}
+
+/** The actual bundled fonts, loaded from assets so chips/preview render in them. */
+@Composable
+private fun rememberReaderFontFamilies(): Map<ReaderFont, FontFamily> {
+    val assets = androidx.compose.ui.platform.LocalContext.current.assets
+    return androidx.compose.runtime.remember {
+        fun fam(file: String) =
+            FontFamily(androidx.compose.ui.text.font.Font(path = "fonts/$file", assetManager = assets))
+        mapOf(
+            ReaderFont.LITERATA to fam("Literata.ttf"),
+            ReaderFont.LORA to fam("Lora.ttf"),
+            ReaderFont.SOURCE_SERIF to fam("SourceSerif4.ttf"),
+            ReaderFont.NEWSREADER to fam("Newsreader.ttf"),
+            ReaderFont.CRIMSON to fam("CrimsonPro.ttf"),
+            ReaderFont.BITTER to fam("Bitter.ttf"),
+            ReaderFont.INTER to fam("Inter.ttf"),
+            ReaderFont.ATKINSON to fam("Atkinson-Regular.ttf"),
+            ReaderFont.MONO to FontFamily.Monospace,
+            ReaderFont.SYSTEM to FontFamily.Default,
+        )
+    }
+}
+
+@Composable
+private fun PreviewCard(prefs: ReaderPreferences, fontFamilies: Map<ReaderFont, FontFamily>) {
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val palette = ReaderHtmlBuilder.paletteFor(prefs.theme.resolve(systemDark, nowHourOfDay()))
+    fun parse(hex: String, fallback: Color) =
+        runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(fallback)
+    val bg = parse(palette.background, Color.White)
+    val fg = parse(palette.text, Color.Black)
+    val secondary = parse(palette.secondary, fg)
+    // Mirror the reader CSS: 19px base, scaled, with the unitless line-height.
+    val bodySize = (19f * prefs.fontScale).sp
+    val family = fontFamilies[prefs.font] ?: FontFamily.Default
+
+    androidx.compose.material3.Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = bg,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "The Quiet Hour",
+                color = fg,
+                fontFamily = family,
+                fontSize = (bodySize.value * 1.35f).sp,
+                lineHeight = (bodySize.value * 1.35f * 1.2f).sp,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Good type disappears, leaving only the words. Adjust the size, " +
+                    "spacing and typeface until reading feels effortless.",
+                color = fg,
+                fontFamily = family,
+                fontSize = bodySize,
+                lineHeight = (bodySize.value * prefs.lineHeight).sp,
+                textAlign = if (prefs.justify) TextAlign.Justify else TextAlign.Start,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Preview",
+                color = secondary,
+                fontFamily = FontFamily.SansSerif,
+                fontSize = (bodySize.value * 0.7f).sp,
+            )
+        }
+    }
 }

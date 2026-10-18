@@ -1,7 +1,12 @@
 package ch.lkmc.kararead.data.remote.dto
 
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonContentPolymorphicSerializer
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Wire models mapped 1:1 from the Karakeep OpenAPI spec (`/api/v1`).
@@ -33,10 +38,11 @@ data class BookmarkDto(
 )
 
 /**
- * The `content` discriminated union. kotlinx.serialization uses the default
- * `"type"` class discriminator, which matches Karakeep exactly.
+ * The `content` discriminated union, keyed on the `"type"` field. A custom
+ * content-polymorphic serializer maps any *unrecognized* type to [Unknown]
+ * instead of throwing, so a future Karakeep content type can't fail a page.
  */
-@Serializable
+@Serializable(with = ContentDtoSerializer::class)
 sealed class ContentDto {
 
     @Serializable
@@ -81,6 +87,18 @@ sealed class ContentDto {
     @Serializable
     @SerialName("unknown")
     data object Unknown : ContentDto()
+}
+
+/** Picks the [ContentDto] subtype by `type`, defaulting to [ContentDto.Unknown]. */
+object ContentDtoSerializer :
+    JsonContentPolymorphicSerializer<ContentDto>(ContentDto::class) {
+    override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ContentDto> =
+        when (runCatching { element.jsonObject["type"]?.jsonPrimitive?.content }.getOrNull()) {
+            "link" -> ContentDto.Link.serializer()
+            "text" -> ContentDto.Text.serializer()
+            "asset" -> ContentDto.Asset.serializer()
+            else -> ContentDto.Unknown.serializer()
+        }
 }
 
 @Serializable
@@ -146,7 +164,14 @@ data class HighlightDto(
     val createdAt: String? = null,
 )
 
-@Serializable
+/**
+ * Karakeep's REST contract marks `text` and `note` as *required* keys (nullable,
+ * but the keys must be present). The shared [ApiProvider] JSON uses
+ * `explicitNulls = false`, which would drop a null `note` and make the server
+ * reject the create with HTTP 400 — so this request is serialized explicitly,
+ * emitting every key (including JSON `null`) regardless of that setting.
+ */
+@Serializable(with = CreateHighlightRequestSerializer::class)
 data class CreateHighlightRequest(
     val bookmarkId: String,
     val startOffset: Int,
@@ -154,6 +179,46 @@ data class CreateHighlightRequest(
     val color: String = "yellow",
     val text: String? = null,
     val note: String? = null,
+)
+
+internal object CreateHighlightRequestSerializer :
+    kotlinx.serialization.KSerializer<CreateHighlightRequest> {
+    override val descriptor =
+        kotlinx.serialization.descriptors.buildClassSerialDescriptor("CreateHighlightRequest")
+
+    override fun serialize(
+        encoder: kotlinx.serialization.encoding.Encoder,
+        value: CreateHighlightRequest,
+    ) {
+        val jsonEncoder = encoder as? kotlinx.serialization.json.JsonEncoder
+            ?: error("CreateHighlightRequest can only be serialized to JSON")
+        jsonEncoder.encodeJsonElement(
+            kotlinx.serialization.json.buildJsonObject {
+                put("bookmarkId", kotlinx.serialization.json.JsonPrimitive(value.bookmarkId))
+                put("startOffset", kotlinx.serialization.json.JsonPrimitive(value.startOffset))
+                put("endOffset", kotlinx.serialization.json.JsonPrimitive(value.endOffset))
+                put("color", kotlinx.serialization.json.JsonPrimitive(value.color))
+                put("text", kotlinx.serialization.json.JsonPrimitive(value.text))
+                put("note", kotlinx.serialization.json.JsonPrimitive(value.note))
+            },
+        )
+    }
+
+    override fun deserialize(
+        decoder: kotlinx.serialization.encoding.Decoder,
+    ): CreateHighlightRequest =
+        throw UnsupportedOperationException("CreateHighlightRequest is write-only")
+}
+
+/**
+ * Update a highlight's note (and/or colour). Only the fields present are changed;
+ * `explicitNulls = false` keeps unset fields out of the body. To clear a note,
+ * send an empty string rather than null.
+ */
+@Serializable
+data class UpdateHighlightRequest(
+    val note: String? = null,
+    val color: String? = null,
 )
 
 // --- User ---

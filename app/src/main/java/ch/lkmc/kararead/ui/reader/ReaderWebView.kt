@@ -1,21 +1,185 @@
 package ch.lkmc.kararead.ui.reader
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color as AndroidColor
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.webkit.WebView.HitTestResult
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import ch.lkmc.kararead.data.model.ReaderArticle
 import ch.lkmc.kararead.data.model.ReaderPreferences
 import ch.lkmc.kararead.reader.AssetLoader
 import ch.lkmc.kararead.reader.ReaderHtmlBuilder
+
+/** Height of the (Material 3 small) top app bar overlaid on the article, in dp. */
+private const val READER_TOP_BAR_DP = 64
+/** Breathing space between the top app bar and the article title, in dp. */
+private const val READER_TOP_GAP_DP = 16
+
+/**
+ * Lets the host (e.g. the reader screen's volume-key handler) page the WebView
+ * up or down without holding a direct reference to the view. [direction] is -1
+ * to page up (towards the start) and +1 to page down.
+ */
+class ReaderPager {
+    internal var pageBy: ((Int) -> Unit)? = null
+    internal var scrollToFraction: ((Float) -> Unit)? = null
+    internal var scrollToHighlight: ((String) -> Unit)? = null
+    internal var scrollToHeading: ((Int) -> Unit)? = null
+    fun page(direction: Int) {
+        pageBy?.invoke(direction)
+    }
+
+    /** Smoothly scroll the article to a 0..1 position (used to follow narration). */
+    fun scrollTo(fraction: Float) {
+        scrollToFraction?.invoke(fraction)
+    }
+
+    /** Scroll a saved highlight's mark into view (jump-to-highlight). */
+    fun scrollToHighlight(id: String) {
+        scrollToHighlight?.invoke(id)
+    }
+
+    /** Scroll the Nth article heading into view (table of contents). */
+    fun scrollToHeading(index: Int) {
+        scrollToHeading?.invoke(index)
+    }
+}
+
+/**
+ * Drives the WebView's native in-page text search ("find in article") from the
+ * host, mirroring [ReaderPager]: the host calls [find]/[next]/[previous]/[clear]
+ * without holding the view, and match counts arrive back through [onResult].
+ */
+class ReaderFinder {
+    internal var findAll: ((String) -> Unit)? = null
+    internal var findNextMatch: ((Boolean) -> Unit)? = null
+    internal var clearMatches: (() -> Unit)? = null
+
+    /** Match counts from the WebView: (active match ordinal, total matches). */
+    var onResult: ((activeOrdinal: Int, count: Int) -> Unit)? = null
+
+    fun find(query: String) {
+        findAll?.invoke(query)
+    }
+
+    fun next() {
+        findNextMatch?.invoke(true)
+    }
+
+    fun previous() {
+        findNextMatch?.invoke(false)
+    }
+
+    fun clear() {
+        clearMatches?.invoke()
+    }
+}
+
+/** A WebView that adds a "Highlight" item to the text-selection action menu. */
+private class HighlightWebView(context: Context) : WebView(context) {
+    var onHighlightRequested: (() -> Unit)? = null
+    /** Confirmed single tap by horizontal zone: -1 left, 0 centre, +1 right. */
+    var onTapZone: ((Int) -> Unit)? = null
+
+    // Some OEM selection toolbars (notably Huawei's HwFloatingToolbar) re-invoke
+    // the action callback in a tight loop; this debounces so one tap captures the
+    // selection once.
+    private var lastHighlightAt = 0L
+
+    // A confirmed single tap (not a scroll, fling, double-tap or long-press).
+    // Left/right thirds page; the centre toggles the reading chrome. Native
+    // detection is far more reliable than a JS click listener, which the
+    // WebView's own gesture handling can swallow.
+    private val tapDetector = android.view.GestureDetector(
+        context,
+        object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                // A tap that lands on a link (or other actionable target) should
+                // only follow that link — not also page or toggle the chrome.
+                // The WebView handles the link itself; we just bow out here.
+                if (isActionableTap()) return false
+                val w = width
+                val zone = when {
+                    w <= 0 -> 0
+                    e.x < w * 0.25f -> -1
+                    e.x > w * 0.75f -> 1
+                    else -> 0
+                }
+                onTapZone?.invoke(zone)
+                return false
+            }
+        },
+    )
+
+    /** True when the last touch is over a link/email/phone/geo target. */
+    private fun isActionableTap(): Boolean = when (hitTestResult.type) {
+        HitTestResult.SRC_ANCHOR_TYPE,
+        HitTestResult.SRC_IMAGE_ANCHOR_TYPE,
+        HitTestResult.EMAIL_TYPE,
+        HitTestResult.PHONE_TYPE,
+        HitTestResult.GEO_TYPE,
+        -> true
+        else -> false
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        tapDetector.onTouchEvent(event)
+        return super.onTouchEvent(event)
+    }
+
+    override fun startActionMode(callback: ActionMode.Callback): ActionMode =
+        super.startActionMode(wrap(callback))
+
+    override fun startActionMode(callback: ActionMode.Callback, type: Int): ActionMode =
+        super.startActionMode(wrap(callback), type)
+
+    private fun wrap(inner: ActionMode.Callback) = object : ActionMode.Callback {
+        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            val res = inner.onCreateActionMode(mode, menu)
+            menu.add(Menu.NONE, HIGHLIGHT_ITEM_ID, 0, "Highlight")
+            return res
+        }
+
+        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean =
+            inner.onPrepareActionMode(mode, menu)
+
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            if (item.itemId == HIGHLIGHT_ITEM_ID) {
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - lastHighlightAt > 700) {
+                    lastHighlightAt = now
+                    onHighlightRequested?.invoke()
+                }
+                mode.finish()
+                return true
+            }
+            return inner.onActionItemClicked(mode, item)
+        }
+
+        override fun onDestroyActionMode(mode: ActionMode) = inner.onDestroyActionMode(mode)
+    }
+
+    companion object {
+        private const val HIGHLIGHT_ITEM_ID = 0x6B72 // 'kr'
+    }
+}
 
 /**
  * Renders an article in a WebView using a hand-tuned reader stylesheet.
@@ -25,44 +189,148 @@ import ch.lkmc.kararead.reader.ReaderHtmlBuilder
 // JavascriptInterface: ReaderBridge's methods are annotated with
 // @JavascriptInterface; lint can't track the type through the Compose closure.
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ReaderWebView(
     article: ReaderArticle,
     prefs: ReaderPreferences,
     baseUrl: String?,
+    presanitizedBody: String? = null,
     initialProgress: Float,
+    initialAnchor: String?,
     assetLoader: AssetLoader,
-    onProgress: (Float) -> Unit,
+    onProgress: (fraction: Float, anchor: String) -> Unit,
     onScrollDirection: (up: Boolean) -> Unit,
+    onTap: () -> Unit,
+    onSelection: (text: String, start: Int, end: Int) -> Unit,
+    onHighlightTap: (id: String) -> Unit,
+    highlightsJson: String,
+    pager: ReaderPager,
+    finder: ReaderFinder,
+    pageBottomCoverPx: Int = 0,
+    onRendererGone: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val palette = remember(prefs.theme) { ReaderHtmlBuilder.paletteFor(prefs.theme) }
-    // Build the document once per article; preference changes are applied via JS.
-    val html = remember(article.bookmark.id) {
-        ReaderHtmlBuilder.build(article, prefs)
+    // The reader draws edge-to-edge behind the overlaid, auto-hiding top app bar,
+    // so the article needs enough head-room to clear it: the status-bar inset plus
+    // the bar's height, with a little breathing space below. Use the inset that
+    // *ignores visibility* — the bar is hidden while reading immersively, and a
+    // changing value here would rebuild the document and lose the scroll position.
+    val density = LocalDensity.current
+    val statusBarTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
+    val safeTopPx = with(density) { statusBarTopPx.toDp().value }.toInt() +
+        READER_TOP_BAR_DP + READER_TOP_GAP_DP
+    // The system font-scale accessibility setting; textZoom is pinned to 100
+    // below, so the reader CSS applies it itself. (A change recreates the
+    // activity, so it's stable for the lifetime of this composition.)
+    val systemFontScale = density.fontScale
+    // Build the document once per article; preference changes are applied via
+    // JS. With the body sanitized ahead of time this is cheap string assembly.
+    val html = remember(article.bookmark.id, baseUrl, safeTopPx) {
+        ReaderHtmlBuilder.build(
+            article, prefs,
+            baseUri = baseUrl, safeTopPx = safeTopPx,
+            systemFontScale = systemFontScale, presanitizedBody = presanitizedBody,
+        )
     }
 
     val bridge: ReaderBridge = remember {
-        ReaderBridge(onProgress = onProgress, onScrollDirection = onScrollDirection)
+        ReaderBridge(
+            emitProgress = onProgress,
+            onScrollDirection = onScrollDirection,
+            emitSelection = onSelection,
+            emitHighlightTap = onHighlightTap,
+        )
     }
+
+    // Tracks what we've already pushed into the page. The AndroidView [update]
+    // lambda runs on *every* recomposition (and the reader recomposes on each
+    // scroll-progress tick), so without this gate we'd re-run the highlight
+    // renderer constantly — which rewrites the article's text nodes and
+    // collapses/jumps any selection the reader is in the middle of making.
+    val applied = remember { AppliedReaderState() }
 
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
-            WebView(ctx).apply {
+            HighlightWebView(ctx).apply {
+                onTapZone = { zone ->
+                    when (zone) {
+                        -1 -> pager.page(-1) // tap left: page back
+                        1 -> pager.page(1)   // tap right: page forward
+                        else -> onTap()      // centre: toggle chrome
+                    }
+                }
+                onHighlightRequested = {
+                    evaluateJavascript("window.krCaptureSelection && window.krCaptureSelection();", null)
+                }
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.loadsImagesAutomatically = true
-                settings.builtInZoomControls = false
+                // Allow pinch-to-zoom (no on-screen buttons) so diagrams, wide
+                // tables and small images can be enlarged — an accessibility win.
+                settings.builtInZoomControls = true
                 settings.displayZoomControls = false
+                // Self-hosted servers (especially via the http fallback) often
+                // serve http-hosted images even on an https page; let them load
+                // rather than be blocked as mixed content. Bodies are sanitized
+                // and the asset loader fetches images itself.
+                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 settings.textZoom = 100
                 isVerticalScrollBarEnabled = true
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = WebView.OVER_SCROLL_NEVER
                 setBackgroundColor(safeColor(palette.background))
 
-                bridge.onReady = { restore(initialProgress) }
+                bridge.onReady = {
+                    applied.ready = true
+                    restore(initialProgress, initialAnchor)
+                    // Apply the latest desired state now that the document (and
+                    // its JS hooks) actually exist; the [update] lambda may have
+                    // run before the page finished loading.
+                    applied.desiredPrefs?.let { p ->
+                        applied.appliedPrefs = p
+                        evaluateJavascript(
+                            ReaderHtmlBuilder.applyPrefsScript(
+                                ReaderHtmlBuilder.paletteFor(p.theme), p, systemFontScale,
+                            ),
+                            null,
+                        )
+                    }
+                    applied.appliedHighlights = applied.desiredHighlights
+                    applyHighlights(applied.desiredHighlights)
+                    // Re-assert head-room in case the window inset settled after
+                    // the document was first built.
+                    applied.appliedSafeTopPx = applied.desiredSafeTopPx
+                    setSafeTop(applied.desiredSafeTopPx)
+                    applied.appliedPageCoverPx = applied.desiredPageCoverPx
+                    setPageBottomCover(applied.desiredPageCoverPx)
+                }
                 addJavascriptInterface(bridge, "AndroidReader")
+                pager.pageBy = { dir -> evaluateJavascript("window.krPageBy && window.krPageBy($dir);", null) }
+                pager.scrollToFraction = { f ->
+                    evaluateJavascript("window.krSmoothToFraction && window.krSmoothToFraction($f);", null)
+                }
+                pager.scrollToHighlight = { id ->
+                    val arg = org.json.JSONObject.quote(id)
+                    evaluateJavascript("window.krScrollToHighlight && window.krScrollToHighlight($arg);", null)
+                }
+                pager.scrollToHeading = { index ->
+                    evaluateJavascript("window.krScrollToHeading && window.krScrollToHeading($index);", null)
+                }
+
+                // Native in-page search. findAllAsync highlights every match and
+                // selects the first; findNext walks between them. Results (active
+                // ordinal + total) come back on the find listener.
+                setFindListener { activeMatchOrdinal, numberOfMatches, isDoneCounting ->
+                    if (isDoneCounting) finder.onResult?.invoke(activeMatchOrdinal, numberOfMatches)
+                }
+                finder.findAll = { query ->
+                    if (query.isBlank()) clearMatches() else findAllAsync(query)
+                }
+                finder.findNextMatch = { forward -> findNext(forward) }
+                finder.clearMatches = { clearMatches() }
 
                 webViewClient = object : WebViewClient() {
                     override fun shouldInterceptRequest(
@@ -77,52 +345,164 @@ fun ReaderWebView(
                         view: WebView,
                         request: WebResourceRequest,
                     ): Boolean {
-                        val url = request.url
-                        return if (url.scheme == "http" || url.scheme == "https") {
-                            runCatching {
-                                view.context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                )
-                            }
-                            true
-                        } else {
-                            false
+                        // Every scheme goes to the system: http(s) to the
+                        // browser, mailto:/tel:/geo: to their handlers.
+                        // Returning false for non-http schemes let the WebView
+                        // try to load them itself, replacing the article with
+                        // a net::ERR_UNKNOWN_URL_SCHEME error page.
+                        runCatching {
+                            view.context.startActivity(
+                                Intent(Intent.ACTION_VIEW, request.url)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
                         }
+                        return true
+                    }
+
+                    override fun onRenderProcessGone(
+                        view: WebView,
+                        detail: android.webkit.RenderProcessGoneDetail,
+                    ): Boolean {
+                        // The renderer died (OOM on a huge article, system
+                        // pressure while backgrounded). Returning false would
+                        // kill the entire app; instead tell the host to drop
+                        // this dead view and rebuild the reader.
+                        onRendererGone()
+                        return true
                     }
                 }
                 loadDataWithBaseURL(baseUrl, html, "text/html", "utf-8", null)
             }
         },
         update = { webView ->
+            // Record the latest desired state; it's pushed to the page once it's
+            // ready (above) and thereafter only when it actually changes — never
+            // on the recompositions that merely report scroll progress.
+            applied.desiredPrefs = prefs
+            applied.desiredHighlights = highlightsJson
+            applied.desiredSafeTopPx = safeTopPx
+            applied.desiredPageCoverPx = pageBottomCoverPx
             webView.setBackgroundColor(safeColor(palette.background))
-            val script = ReaderHtmlBuilder.applyPrefsScript(palette, prefs)
-            webView.evaluateJavascript(script, null)
+            if (applied.ready) {
+                if (applied.appliedPrefs != prefs) {
+                    applied.appliedPrefs = prefs
+                    webView.evaluateJavascript(
+                        ReaderHtmlBuilder.applyPrefsScript(palette, prefs, systemFontScale),
+                        null,
+                    )
+                }
+                if (applied.appliedHighlights != highlightsJson) {
+                    applied.appliedHighlights = highlightsJson
+                    webView.applyHighlights(highlightsJson)
+                }
+                if (applied.appliedSafeTopPx != safeTopPx) {
+                    applied.appliedSafeTopPx = safeTopPx
+                    webView.setSafeTop(safeTopPx)
+                }
+                if (applied.appliedPageCoverPx != pageBottomCoverPx) {
+                    applied.appliedPageCoverPx = pageBottomCoverPx
+                    webView.setPageBottomCover(pageBottomCoverPx)
+                }
+            }
         },
-        onRelease = { it.destroy() },
+        onRelease = {
+            pager.pageBy = null
+            pager.scrollToFraction = null
+            pager.scrollToHighlight = null
+            pager.scrollToHeading = null
+            finder.findAll = null
+            finder.findNextMatch = null
+            finder.clearMatches = null
+            it.destroy()
+        },
     )
 }
 
-private fun WebView.restore(fraction: Float) {
-    if (fraction <= 0.001f) return
-    // Defer a touch so layout (and most images) have settled.
-    postDelayed({ evaluateJavascript("window.krRestore && window.krRestore($fraction);", null) }, 120)
+private fun WebView.restore(fraction: Float, anchor: String?) {
+    if (fraction <= 0.001f && anchor.isNullOrEmpty()) return
+    // Defer a touch so the initial layout has settled; prefer the block anchor
+    // (which re-pins itself as late images load) and fall back to the fraction.
+    postDelayed({
+        if (!anchor.isNullOrEmpty()) {
+            val arg = org.json.JSONObject.quote(anchor)
+            evaluateJavascript("window.krRestoreAnchor && window.krRestoreAnchor($arg);", null)
+        } else {
+            evaluateJavascript("window.krRestore && window.krRestore($fraction);", null)
+        }
+    }, 120)
+}
+
+private fun WebView.applyHighlights(json: String) {
+    // JSON is an array literal; safe to inline as a JS string argument.
+    val arg = org.json.JSONObject.quote(json)
+    evaluateJavascript("window.krApplyHighlights && window.krApplyHighlights($arg);", null)
+}
+
+/** Update the article's top head-room (CSS `--kr-safe-top`) live, in CSS px. */
+private fun WebView.setSafeTop(px: Int) {
+    evaluateJavascript(
+        "document.documentElement.style.setProperty('--kr-safe-top', '${px}px');",
+        null,
+    )
+}
+
+/** How much of the bottom the "next article" badge covers, for paging (CSS px). */
+private fun WebView.setPageBottomCover(px: Int) {
+    evaluateJavascript(
+        "document.documentElement.style.setProperty('--kr-page-bottom-cover', '${px}px');",
+        null,
+    )
 }
 
 private fun safeColor(hex: String): Int =
     runCatching { AndroidColor.parseColor(hex) }.getOrDefault(AndroidColor.WHITE)
 
-/** JS → Android bridge for scroll progress. */
+/**
+ * Mutable scratch state remembered across recompositions so the [AndroidView]
+ * `update` lambda can tell "the preferences/highlights actually changed" apart
+ * from "we recomposed for an unrelated reason" (most often a scroll-progress
+ * tick). `desired*` is the newest value seen during composition; `applied*` is
+ * what has actually been pushed into the WebView. `ready` flips true once the
+ * document has loaded and its JS hooks exist.
+ */
+private class AppliedReaderState {
+    var ready = false
+    var desiredPrefs: ReaderPreferences? = null
+    var appliedPrefs: ReaderPreferences? = null
+    var desiredHighlights: String = "[]"
+    var appliedHighlights: String? = null
+    var desiredSafeTopPx: Int = 0
+    var appliedSafeTopPx: Int? = null
+    var desiredPageCoverPx: Int = 0
+    var appliedPageCoverPx: Int? = null
+}
+
+/**
+ * JS → Android bridge. The `@JavascriptInterface` methods below are what the
+ * page calls (`AndroidReader.onProgress(...)`, `.onSelection(...)`, etc.), so
+ * their names are fixed. The Kotlin callbacks are deliberately named `emit*` to
+ * avoid colliding with those method names — a same-name, same-signature property
+ * would be shadowed by the member function and the dispatch would recurse into
+ * itself instead of reaching the host.
+ */
 internal class ReaderBridge(
-    private val onProgress: (Float) -> Unit,
+    private val emitProgress: (fraction: Float, anchor: String) -> Unit,
     private val onScrollDirection: (Boolean) -> Unit,
+    private val emitSelection: (text: String, start: Int, end: Int) -> Unit,
+    private val emitHighlightTap: (id: String) -> Unit,
 ) {
     var onReady: (() -> Unit)? = null
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    // Drop an accidental rapid repeat of the same range (e.g. a double-tap on
+    // "Highlight") before it reaches the view model.
+    private var lastSelSig: String? = null
+    private var lastSelAt = 0L
+
     @JavascriptInterface
-    fun onProgress(fraction: Double, up: Boolean) {
+    fun onProgress(fraction: Double, anchor: String, up: Boolean) {
         mainHandler.post {
-            onProgress(fraction.toFloat())
+            emitProgress(fraction.toFloat(), anchor)
             onScrollDirection(up)
         }
     }
@@ -130,5 +510,20 @@ internal class ReaderBridge(
     @JavascriptInterface
     fun onReady() {
         mainHandler.post { onReady?.invoke() }
+    }
+
+    @JavascriptInterface
+    fun onSelection(text: String, start: Int, end: Int) {
+        val sig = "$start:$end"
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (sig == lastSelSig && now - lastSelAt < 1500) return
+        lastSelSig = sig
+        lastSelAt = now
+        mainHandler.post { emitSelection(text, start, end) }
+    }
+
+    @JavascriptInterface
+    fun onHighlightTap(id: String) {
+        mainHandler.post { emitHighlightTap(id) }
     }
 }
