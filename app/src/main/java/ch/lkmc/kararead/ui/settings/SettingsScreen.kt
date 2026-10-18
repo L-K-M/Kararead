@@ -1,33 +1,61 @@
 package ch.lkmc.kararead.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.lkmc.kararead.data.model.AppThemeMode
+import ch.lkmc.kararead.ui.theme.AccentPresets
+import ch.lkmc.kararead.ui.theme.DefaultAccent
+import ch.lkmc.kararead.util.folderDisplayName
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +70,16 @@ fun SettingsScreen(
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull() ?: "1.0"
     }
+    var editingConnection by remember { mutableStateOf(false) }
+
+    if (editingConnection) {
+        ConnectionEditDialog(
+            serverUrl = state.serverUrl,
+            fallbackUrl = state.fallbackUrl,
+            onDismiss = { editingConnection = false },
+            onSave = viewModel::updateConnection,
+        )
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(
@@ -50,11 +88,27 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             SectionHeader("Connection")
-            SettingRow(title = "Server", subtitle = state.serverUrl.ifBlank { "Not connected" })
+            SettingRow(
+                title = "Server",
+                subtitle = state.serverUrl.ifBlank { "Not connected" },
+                onClick = { editingConnection = true },
+                actionLabel = "Edit",
+            )
+            if (state.fallbackUrl.isNotBlank()) {
+                SettingRow(title = "Fallback server", subtitle = state.fallbackUrl)
+            }
             SettingRow(
                 title = "Read-later list",
                 subtitle = state.readLaterName ?: "Pick one in the Lists tab",
             )
+            if (state.pendingSyncCount > 0) {
+                SettingRow(
+                    title = "Waiting to sync",
+                    subtitle = pendingSyncSubtitle(state.pendingSyncCount),
+                    onClick = viewModel::retrySync,
+                    actionLabel = "Retry",
+                )
+            }
 
             HorizontalDivider()
             SectionHeader("Appearance")
@@ -79,14 +133,127 @@ fun SettingsScreen(
                 checked = state.dynamicColor,
                 onChange = viewModel::setDynamicColor,
             )
+            if (!state.dynamicColor) {
+                AccentPicker(
+                    selected = state.accentColor,
+                    onPick = viewModel::setAccentColor,
+                )
+            }
 
             HorizontalDivider()
-            SectionHeader("Storage")
+            SectionHeader("Offline reading")
+            ToggleSetting(
+                title = "Download for offline",
+                subtitle = "Keep your unread queue on the device, so there's always something to read without a connection.",
+                checked = state.offline.enabled,
+                onChange = viewModel::setOfflineEnabled,
+            )
+            if (state.offline.enabled) {
+                ToggleSetting(
+                    title = "Only on Wi-Fi",
+                    subtitle = "Avoid using mobile data to download articles.",
+                    checked = state.offline.wifiOnly,
+                    onChange = viewModel::setOfflineWifiOnly,
+                )
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("Keep this many articles", style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        Modifier.padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(10, 20, 50).forEach { n ->
+                            FilterChip(
+                                selected = state.offline.keepCount == n,
+                                onClick = { viewModel.setOfflineKeepCount(n) },
+                                label = { Text("$n") },
+                            )
+                        }
+                    }
+                }
+            }
             SettingRow(
-                title = "Offline cache",
-                subtitle = "${state.cachedCount} article(s) cached for offline reading",
-                onClick = viewModel::clearCache,
-                actionLabel = "Clear",
+                title = "Available offline",
+                subtitle = offlineStatusSubtitle(state),
+                onClick = if (state.offline.enabled) viewModel::downloadOfflineNow else null,
+                actionLabel = if (state.offline.enabled) "Download now" else null,
+            )
+            if (state.cachedCount > 0) {
+                SettingRow(
+                    title = "Clear downloads",
+                    subtitle = "Remove all cached articles from this device.",
+                    onClick = viewModel::clearCache,
+                    actionLabel = "Clear",
+                )
+            }
+
+            HorizontalDivider()
+            SectionHeader("Highlights")
+            // OPEN_DOCUMENT_TREE: the user grants a folder once; we persist the
+            // permission so highlights can be saved there (e.g. a Syncthing dir)
+            // without a picker each time.
+            val folderPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocumentTree(),
+            ) { uri ->
+                if (uri != null) {
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                        )
+                    }
+                    viewModel.setHighlightsFolder(uri.toString())
+                }
+            }
+            SettingRow(
+                title = "Export folder",
+                subtitle = state.highlightsFolder
+                    ?.let { "Auto-saving highlights to ${folderDisplayName(it)} as you make them" }
+                    ?: "Choose a folder to auto-save highlights into — e.g. a Syncthing-synced directory.",
+                onClick = { folderPicker.launch(state.highlightsFolder?.let { Uri.parse(it) }) },
+                actionLabel = if (state.highlightsFolder != null) "Change" else "Choose",
+            )
+            if (state.highlightsFolder != null) {
+                SettingRow(
+                    title = "Clear export folder",
+                    subtitle = "Stop auto-saving highlights to a folder.",
+                    onClick = { viewModel.setHighlightsFolder(null) },
+                    actionLabel = "Clear",
+                )
+            }
+
+            HorizontalDivider()
+            SectionHeader("Backup")
+            // Reading progress, streaks and stats live only on this device.
+            // CreateDocument/OpenDocument hand back a one-shot document URI — a
+            // single portable JSON file, no folder permission to persist.
+            val backupLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/json"),
+            ) { uri ->
+                if (uri != null) viewModel.backUp(uri) { msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            }
+            val restoreLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                if (uri != null) viewModel.restore(uri) { msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            }
+            SettingRow(
+                title = "Back up reading data",
+                subtitle = "Save your reading positions, streaks and stats to a file — " +
+                    "none of it lives on the Karakeep server.",
+                onClick = { backupLauncher.launch("kararead-backup.json") },
+                actionLabel = "Export",
+            )
+            SettingRow(
+                title = "Restore reading data",
+                subtitle = "Merge a backup back in. Existing positions and today's " +
+                    "reading are never overwritten.",
+                onClick = { restoreLauncher.launch(arrayOf("application/json")) },
+                actionLabel = "Import",
             )
 
             HorizontalDivider()
@@ -99,6 +266,140 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Sign out")
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Edit the server connection in place (rotate an API key, move the server)
+ * without signing out — which would wipe the cache, reading progress and stats.
+ * The API key field is left blank and only overwrites the stored key if filled,
+ * so the existing key is never surfaced back to the screen.
+ */
+@Composable
+private fun ConnectionEditDialog(
+    serverUrl: String,
+    fallbackUrl: String,
+    onDismiss: () -> Unit,
+    onSave: (serverUrl: String, fallbackUrl: String, apiKey: String, (ConnectionEditResult) -> Unit) -> Unit,
+) {
+    var server by remember { mutableStateOf(serverUrl) }
+    var fallback by remember { mutableStateOf(fallbackUrl) }
+    var apiKey by remember { mutableStateOf("") }
+    var testing by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { if (!testing) onDismiss() },
+        title = { Text("Edit connection") },
+        text = {
+            Column {
+                androidx.compose.material3.OutlinedTextField(
+                    value = server,
+                    onValueChange = { server = it; error = null },
+                    label = { Text("Server URL") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = fallback,
+                    onValueChange = { fallback = it; error = null },
+                    label = { Text("Fallback URL (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it; error = null },
+                    label = { Text("API key") },
+                    placeholder = { Text("Leave blank to keep current") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (error != null) {
+                    androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 8.dp))
+                    Text(
+                        error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                enabled = !testing,
+                onClick = {
+                    testing = true
+                    error = null
+                    onSave(server, fallback, apiKey) { result ->
+                        testing = false
+                        when (result) {
+                            is ConnectionEditResult.Success -> onDismiss()
+                            is ConnectionEditResult.Failure -> error = result.message
+                        }
+                    }
+                },
+            ) { Text(if (testing) "Testing…" else "Test & save") }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(
+                enabled = !testing,
+                onClick = onDismiss,
+            ) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun AccentPicker(selected: Int, onPick: (Int) -> Unit) {
+    val effective = if (selected != 0) selected else DefaultAccent.toArgb()
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("Accent color", style = MaterialTheme.typography.titleMedium)
+        Row(
+            Modifier
+                .padding(top = 10.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AccentPresets.forEachIndexed { index, color ->
+                val isSelected = color.toArgb() == effective
+                val name = ch.lkmc.kararead.ui.theme.AccentPresetNames.getOrNull(index) ?: "Accent"
+                Box(
+                    Modifier
+                        // minimumInteractiveComponentSize expands the touch
+                        // target to 48dp; the old 34dp bare-clickable circles
+                        // were fiddly and announced as eight nameless buttons.
+                        .minimumInteractiveComponentSize()
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                        .border(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.outlineVariant,
+                            shape = CircleShape,
+                        )
+                        .selectable(
+                            selected = isSelected,
+                            role = Role.RadioButton,
+                            onClick = { onPick(color.toArgb()) },
+                        )
+                        .semantics { contentDescription = name },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = if (color.luminance() > 0.5f) Color.Black else Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }
@@ -176,3 +477,19 @@ private fun themeLabel(mode: AppThemeMode) = when (mode) {
     AppThemeMode.LIGHT -> "Light"
     AppThemeMode.DARK -> "Dark"
 }
+
+private fun offlineStatusSubtitle(state: SettingsUiState): String {
+    val count = state.cachedCount
+    val ready = when (count) {
+        0 -> "Nothing downloaded yet"
+        1 -> "1 article ready offline"
+        else -> "$count articles ready offline"
+    }
+    return if (state.offline.enabled) "$ready · keeping up to ${state.offline.keepCount}" else ready
+}
+
+private fun pendingSyncSubtitle(count: Int): String = when (count) {
+    1 -> "1 offline change will sync when you're back online"
+    else -> "$count offline changes will sync when you're back online"
+}
+

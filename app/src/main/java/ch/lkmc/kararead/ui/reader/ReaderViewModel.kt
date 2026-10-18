@@ -1,8 +1,12 @@
 package ch.lkmc.kararead.ui.reader
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.lkmc.kararead.data.model.Bookmark
+import ch.lkmc.kararead.data.model.Highlight
 import ch.lkmc.kararead.data.model.ReaderArticle
 import ch.lkmc.kararead.data.model.ReaderFont
 import ch.lkmc.kararead.data.model.ReaderPreferences
@@ -10,17 +14,28 @@ import ch.lkmc.kararead.data.model.ReaderTheme
 import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.remote.ApiProvider
 import ch.lkmc.kararead.data.repository.KarakeepRepository
+import ch.lkmc.kararead.di.ApplicationScope
 import ch.lkmc.kararead.reader.AssetLoader
+import ch.lkmc.kararead.tts.ArticleSpeaker
+import ch.lkmc.kararead.tts.SpeechState
+import ch.lkmc.kararead.tts.VoiceInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 
 data class ReaderUiState(
@@ -30,8 +45,10 @@ data class ReaderUiState(
     val favourited: Boolean = false,
     val archived: Boolean = false,
     val initialProgress: Float = 0f,
-    val progress: Float = 0f,
+    val initialAnchor: String? = null,
     val offline: Boolean = false,
+    /** Article body already sanitized off the UI thread, ready for the WebView. */
+    val sanitizedBody: String? = null,
 )
 
 @HiltViewModel
@@ -40,13 +57,66 @@ class ReaderViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val apiProvider: ApiProvider,
     val assetLoader: AssetLoader,
+    private val speaker: ArticleSpeaker,
+    @ApplicationScope private val appScope: CoroutineScope,
+    @ApplicationContext private val appContext: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
+    val speech: StateFlow<SpeechState> = speaker.state
+    val voices: StateFlow<List<VoiceInfo>> = speaker.voices
+
+    val ttsVoiceId: StateFlow<String?> =
+        settings.ttsVoice.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val ttsRate: StateFlow<Float> =
+        settings.ttsRate.stateIn(viewModelScope, SharingStarted.Eagerly, 1.0f)
+
     private val bookmarkId: String = savedStateHandle.get<String>("bookmarkId").orEmpty()
+
+    /** A highlight to scroll to on open (from the Highlights screen), or null. */
+    val initialHighlightId: String? = savedStateHandle.get<String>("highlightId")
+
+    private val _highlights = MutableStateFlow<List<Highlight>>(emptyList())
+    val highlights: StateFlow<List<Highlight>> = _highlights
+
+    // The article's headings, for the table of contents (parsed off-thread on load).
+    private val _headings = MutableStateFlow<List<ch.lkmc.kararead.reader.ReaderHeading>>(emptyList())
+    val headings: StateFlow<List<ch.lkmc.kararead.reader.ReaderHeading>> = _headings
+
+    // The next unread article we'd open from the end-of-article "Done · Next"
+    // button, fetched once on load so the button can name it.
+    private val _nextUp = MutableStateFlow<Bookmark?>(null)
+    val nextUp: StateFlow<Bookmark?> = _nextUp
+
+    // Transient user-facing messages (e.g. highlight saved / failed).
+    private val _messages = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.BUFFERED)
+    val messages = _messages.receiveAsFlow()
+
+    /** Highlights serialized as `[{id,start,end}]` for the WebView renderer. */
+    val highlightsJson: StateFlow<String> =
+        _highlights.map { list ->
+            JSONArray().apply {
+                list.forEach { h ->
+                    put(
+                        JSONObject()
+                            .put("id", h.id)
+                            .put("start", h.startOffset)
+                            .put("end", h.endOffset),
+                    )
+                }
+            }.toString()
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, "[]")
 
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state
+
+    // Reading progress lives outside ReaderUiState on purpose: the WebView
+    // reports it every scroll frame, and copying the whole UI state per frame
+    // recomposed the entire reader ~60-120x/s during a fling. Consumers that
+    // only care about coarse changes derive from this flow instead.
+    private val _progress = MutableStateFlow(0f)
+    val progress: StateFlow<Float> = _progress
 
     val readerPrefs: StateFlow<ReaderPreferences> =
         settings.readerPreferences.stateIn(
@@ -58,25 +128,112 @@ class ReaderViewModel @Inject constructor(
     private var saveJob: Job? = null
     private var lastSaved = 0f
 
+    // Debounces background auto-save of highlights to the export folder.
+    private var autoSaveJob: Job? = null
+
+    // The most recent progress reported by the WebView, so we can flush it on
+    // exit even if the debounce window hadn't elapsed.
+    private var pendingFraction = 0f
+    private var pendingAnchor: String? = null
+
+    // The live restore point for a (re)created WebView. Kept as plain vars (not
+    // in the per-frame ReaderUiState, which would undo the progress-flow
+    // optimization) and read only when the WebView is built — which is exactly
+    // what rotation / activity recreation triggers. Null until the first report,
+    // so a fresh open restores to the persisted position instead.
+    private var reportedFraction: Float? = null
+    private var reportedAnchor: String? = null
+
+    /** Fraction a (re)created WebView should restore to: live, else persisted. */
+    val restoreProgress: Float get() = reportedFraction ?: _state.value.initialProgress
+
+    /** Block anchor a (re)created WebView should restore to: live, else persisted. */
+    val restoreAnchor: String? get() = reportedAnchor ?: _state.value.initialAnchor
+
+    // True once the user has toggled read/favourite in this session, so a late
+    // live-state refresh never clobbers their optimistic change.
+    private var userChangedReadState = false
+
     init {
         load()
+        // Highlights are cache-first: observe the local cache so offline creates
+        // and deletes appear at once (load() kicks a server refresh into it).
+        viewModelScope.launch {
+            repository.observeHighlights(bookmarkId).collect { _highlights.value = it }
+        }
+        // Keep the speaker's preferred voice in sync with the saved setting so the
+        // first "Listen" already uses it.
+        viewModelScope.launch {
+            settings.ttsVoice.collect { speaker.preferredVoiceId = it }
+        }
+        // Likewise for the narration speed.
+        viewModelScope.launch {
+            settings.ttsRate.collect { speaker.speechRate = it }
+        }
     }
 
     fun load(forceRefresh: Boolean = false) {
+        userChangedReadState = false
+        // New (or reloaded) article: forget the previous live restore point so
+        // the WebView restores to the persisted position, not a stale one.
+        reportedFraction = null
+        reportedAnchor = null
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             val initial = repository.getProgressOnce(bookmarkId)
+            val wasCached = repository.isCached(bookmarkId)
             runCatching { repository.getArticle(bookmarkId, forceRefresh) }
                 .onSuccess { article ->
+                    // Sanitize off the UI thread; doing it lazily inside
+                    // composition hitched the reader's open transition.
+                    val sanitizedBody = withContext(Dispatchers.Default) {
+                        ch.lkmc.kararead.reader.ReaderHtmlBuilder.sanitizeBody(
+                            article.htmlContent, apiProvider.serverOrigin,
+                        )
+                    }
+                    _headings.value = withContext(Dispatchers.Default) {
+                        ch.lkmc.kararead.reader.ReaderHtmlBuilder.tableOfContents(sanitizedBody)
+                    }
                     _state.update {
                         it.copy(
                             loading = false,
                             article = article,
+                            sanitizedBody = sanitizedBody,
                             favourited = article.bookmark.favourited,
                             archived = article.bookmark.archived,
-                            initialProgress = initial,
-                            progress = initial,
+                            initialProgress = initial?.fraction ?: 0f,
+                            initialAnchor = initial?.anchor,
                         )
+                    }
+                    _progress.value = initial?.fraction ?: 0f
+                    // Only a cache-served article can carry stale flags; a live
+                    // fetch just delivered fresh ones, and the extra GET per
+                    // open delayed highlights behind a needless round trip.
+                    if (wasCached && !forceRefresh) {
+                        repository.refreshReadState(bookmarkId)?.let { (archived, favourited) ->
+                            if (!userChangedReadState) {
+                                _state.update { it.copy(archived = archived, favourited = favourited) }
+                            }
+                        }
+                    }
+                    // Pull the latest highlights into the cache; the observer
+                    // above renders them (and any offline edits) reactively.
+                    launch { runCatching { repository.refreshHighlights(bookmarkId) } }
+                    launch {
+                        val next = runCatching { repository.nextInboxBookmark(bookmarkId) }.getOrNull()
+                        _nextUp.value = next
+                        // Quietly warm the next article (body + images) so
+                        // "Done · Next" opens instantly — and works offline.
+                        next?.let { n ->
+                            runCatching {
+                                val warmed = repository.getArticle(n.id)
+                                withContext(Dispatchers.IO) {
+                                    assetLoader.prefetchImages(
+                                        warmed.htmlContent, apiProvider.serverOrigin,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 .onFailure { e ->
@@ -88,18 +245,25 @@ class ReaderViewModel @Inject constructor(
     }
 
     /** Called frequently from the WebView scroll bridge; persists with debounce. */
-    fun onProgress(fraction: Float) {
-        _state.update { it.copy(progress = fraction) }
+    fun onProgress(fraction: Float, anchor: String) {
+        _progress.value = fraction
+        // Track the live restore point (last non-empty anchor wins), for a
+        // WebView rebuilt on rotation.
+        reportedFraction = fraction
+        reportedAnchor = anchor.takeIf { it.isNotEmpty() } ?: reportedAnchor
+        pendingFraction = fraction
+        pendingAnchor = anchor.takeIf { it.isNotEmpty() }
         if (kotlin.math.abs(fraction - lastSaved) < 0.01f) return
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
             delay(400)
             lastSaved = fraction
-            repository.saveProgress(bookmarkId, fraction)
+            repository.saveProgress(bookmarkId, fraction, pendingAnchor)
         }
     }
 
     fun toggleFavourite() {
+        userChangedReadState = true
         val newValue = !_state.value.favourited
         _state.update { it.copy(favourited = newValue) }
         viewModelScope.launch {
@@ -110,6 +274,7 @@ class ReaderViewModel @Inject constructor(
 
     /** Mark as read/done (archive) or restore. */
     fun toggleArchived() {
+        userChangedReadState = true
         val newValue = !_state.value.archived
         _state.update { it.copy(archived = newValue) }
         viewModelScope.launch {
@@ -127,11 +292,202 @@ class ReaderViewModel @Inject constructor(
     fun setMargin(value: Int) = updatePrefs { it.copy(horizontalMargin = value.coerceIn(0, 48)) }
     fun setJustify(value: Boolean) = updatePrefs { it.copy(justify = value) }
     fun setKeepScreenOn(value: Boolean) = updatePrefs { it.copy(keepScreenOn = value) }
+    fun setVolumeKeyPaging(value: Boolean) = updatePrefs { it.copy(volumeKeyPaging = value) }
 
     private fun updatePrefs(transform: (ReaderPreferences) -> ReaderPreferences) {
         viewModelScope.launch {
             settings.updateReaderPreferences(transform(readerPrefs.value))
         }
+    }
+
+    /** Record foreground reading time (driven by the screen's lifecycle ticker). */
+    fun recordReadingSeconds(seconds: Long) {
+        viewModelScope.launch { repository.addReadingSeconds(seconds) }
+    }
+
+    // --- Highlights ---
+
+    // Guards against the same selection being reported more than once (some OEM
+    // selection toolbars re-invoke the action): at most one highlight per range.
+    private var lastHighlightSig: String? = null
+    private var lastHighlightAt = 0L
+
+    /** Create a highlight from a captured text selection. */
+    fun addHighlight(text: String, start: Int, end: Int) {
+        if (end <= start) return
+        val sig = "$start:$end"
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (sig == lastHighlightSig && now - lastHighlightAt < 3000) return
+        lastHighlightSig = sig
+        lastHighlightAt = now
+        viewModelScope.launch {
+            // The repository writes the cache optimistically and queues an
+            // outbox op when offline, so this succeeds either way; the cache
+            // observer surfaces the new highlight. Only a real error toasts.
+            runCatching { repository.createHighlight(bookmarkId, start, end, text.trim()) }
+                .onSuccess {
+                    _messages.trySend("Highlighted")
+                    scheduleHighlightAutoSave()
+                }
+                .onFailure { _messages.trySend("Couldn't save highlight — try again") }
+        }
+    }
+
+    /** Set (or clear, with a blank string) the note attached to a highlight. */
+    fun updateHighlightNote(id: String, note: String) {
+        viewModelScope.launch {
+            // Cache-first (offline notes go to the outbox); the observer reflects it.
+            runCatching { repository.updateHighlightNote(id, note.trim()) }
+                .onSuccess { scheduleHighlightAutoSave() }
+                .onFailure { _messages.trySend("Couldn't save note — try again") }
+        }
+    }
+
+    fun removeHighlight(id: String) {
+        viewModelScope.launch {
+            // Cache-first delete (offline goes to the outbox); the observer drops it.
+            runCatching { repository.deleteHighlight(id) }
+                .onSuccess { scheduleHighlightAutoSave() }
+                .onFailure { _messages.trySend("Couldn't delete highlight — try again") }
+        }
+    }
+
+    fun highlight(id: String): Highlight? = _highlights.value.firstOrNull { it.id == id }
+
+    /** Highlights as Markdown for export/sharing, or null if there are none. */
+    fun highlightsMarkdown(): String? {
+        val hs = _highlights.value
+        if (hs.none { !it.text.isNullOrBlank() }) return null
+        val bm = _state.value.article?.bookmark
+        return ch.lkmc.kararead.util.highlightsToMarkdown(
+            title = bm?.displayTitle ?: "Highlights",
+            url = bm?.url,
+            highlights = hs,
+        )
+    }
+
+    /**
+     * If an export folder is configured, write this article's highlights into it
+     * in the background whenever they change, so the folder (e.g. a Syncthing
+     * directory) always mirrors the latest highlights. Debounced and silent; runs
+     * on [appScope] so a change made just before leaving still lands. Writing an
+     * empty (title-only) document when the last highlight is removed keeps the
+     * file in sync rather than leaving stale content.
+     */
+    private fun scheduleHighlightAutoSave() {
+        autoSaveJob?.cancel()
+        autoSaveJob = appScope.launch {
+            delay(800)
+            val folder = settings.highlightsFolderUriOnce()
+            if (folder.isNullOrBlank()) return@launch
+            val bm = _state.value.article?.bookmark ?: return@launch
+            val md = ch.lkmc.kararead.util.highlightsToMarkdown(
+                title = bm.displayTitle,
+                url = bm.url,
+                highlights = _highlights.value,
+            )
+            withContext(Dispatchers.IO) {
+                ch.lkmc.kararead.util.saveMarkdownToFolder(
+                    appContext, Uri.parse(folder), bm.displayTitle, md, uniqueKey = bm.id,
+                )
+            }
+        }
+    }
+
+    /**
+     * Save this article's highlights as Markdown into the user's configured
+     * export folder (e.g. a Syncthing directory). Reports the outcome via
+     * [messages]; nudges to Settings when no folder is set yet.
+     */
+    fun saveHighlightsToFolder() {
+        val md = highlightsMarkdown()
+        if (md == null) {
+            _messages.trySend("No highlights to save")
+            return
+        }
+        val title = _state.value.article?.bookmark?.displayTitle ?: "Highlights"
+        viewModelScope.launch {
+            val folder = settings.highlightsFolderUriOnce()
+            if (folder.isNullOrBlank()) {
+                _messages.trySend("Set an export folder in Settings first")
+                return@launch
+            }
+            val saved = withContext(Dispatchers.IO) {
+                ch.lkmc.kararead.util.saveMarkdownToFolder(
+                    appContext, Uri.parse(folder), title, md,
+                    uniqueKey = _state.value.article?.bookmark?.id,
+                )
+            }
+            _messages.trySend(
+                if (saved != null) "Saved \"$saved\"" else "Couldn't save — re-pick the folder in Settings",
+            )
+        }
+    }
+
+    // --- Text-to-speech ---
+
+    /** Whether the current article has readable text to narrate. */
+    val canListen: Boolean get() = !_state.value.article?.textContent.isNullOrBlank()
+
+    fun listen() = speaker.start(_state.value.article?.textContent, _progress.value)
+    fun toggleSpeech() = speaker.togglePlayPause()
+    fun skipSpeech(delta: Int) = speaker.skipBy(delta)
+    fun stopSpeech() = speaker.stop()
+
+    fun setVoice(id: String) {
+        speaker.setVoice(id)
+        viewModelScope.launch { settings.setTtsVoice(id) }
+    }
+
+    fun setSpeechRate(rate: Float) {
+        speaker.changeSpeechRate(rate)
+        viewModelScope.launch { settings.setTtsRate(rate) }
+    }
+
+    // --- Next in queue (auto-advance) ---
+
+    /**
+     * Find the next unread article to read. When [archiveFirst] is set, the
+     * current article is marked read (archived) first — the "finish & continue"
+     * flow. Returns the next bookmark id, or null if the inbox is empty.
+     */
+    suspend fun nextArticle(archiveFirst: Boolean): String? {
+        if (bookmarkId.isEmpty()) return null
+        if (archiveFirst && !_state.value.archived) {
+            userChangedReadState = true
+            // Reflect the archive locally too, so the article shows as read if you
+            // come back to it; revert if the server call fails.
+            _state.update { it.copy(archived = true) }
+            runCatching { repository.setArchived(bookmarkId, true) }
+                .onFailure { _state.update { s -> s.copy(archived = false) } }
+        }
+        return runCatching { repository.nextInboxId(bookmarkId) }.getOrNull()
+    }
+
+    /**
+     * Persist the latest scroll position right now, bypassing the [onProgress]
+     * debounce. Called when the reader is backgrounded (ON_STOP) so the position
+     * survives a background process kill — `onCleared` isn't called when the OS
+     * reclaims the process, and the debounced write would never run. Uses
+     * [appScope] so the write outlives this ViewModel if it's being cleared.
+     */
+    fun flushProgress() {
+        saveJob?.cancel()
+        if (bookmarkId.isEmpty()) return
+        if (kotlin.math.abs(pendingFraction - lastSaved) < 0.001f) return
+        val fraction = pendingFraction
+        val anchor = pendingAnchor
+        lastSaved = fraction
+        appScope.launch { repository.saveProgress(bookmarkId, fraction, anchor) }
+    }
+
+    override fun onCleared() {
+        speaker.shutdown()
+        // Flush the last scroll position even though viewModelScope is being
+        // cancelled — otherwise the final movement before exit (when "resume"
+        // matters most) is lost with the debounced write.
+        flushProgress()
+        super.onCleared()
     }
 
     fun url(): String? = _state.value.article?.bookmark?.url

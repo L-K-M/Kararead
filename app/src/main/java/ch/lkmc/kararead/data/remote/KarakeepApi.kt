@@ -10,6 +10,7 @@ import ch.lkmc.kararead.data.remote.dto.PaginatedBookmarksDto
 import ch.lkmc.kararead.data.remote.dto.PaginatedHighlightsDto
 import ch.lkmc.kararead.data.remote.dto.TagsResponseDto
 import ch.lkmc.kararead.data.remote.dto.UpdateBookmarkRequest
+import ch.lkmc.kararead.data.remote.dto.UpdateHighlightRequest
 import ch.lkmc.kararead.data.remote.dto.UserDto
 import okhttp3.ResponseBody
 import retrofit2.http.Body
@@ -111,11 +112,23 @@ interface KarakeepApi {
 
     // --- Highlights ---
 
+    @GET("highlights")
+    suspend fun getAllHighlights(
+        @Query("limit") limit: Int = DEFAULT_PAGE_SIZE,
+        @Query("cursor") cursor: String? = null,
+    ): PaginatedHighlightsDto
+
     @GET("bookmarks/{id}/highlights")
     suspend fun getBookmarkHighlights(@Path("id") id: String): PaginatedHighlightsDto
 
     @POST("highlights")
     suspend fun createHighlight(@Body body: CreateHighlightRequest): HighlightDto
+
+    @PATCH("highlights/{id}")
+    suspend fun updateHighlight(
+        @Path("id") id: String,
+        @Body body: UpdateHighlightRequest,
+    ): HighlightDto
 
     @DELETE("highlights/{id}")
     suspend fun deleteHighlight(@Path("id") id: String)

@@ -18,6 +18,32 @@ fun parseIsoToMillis(value: String?): Long? {
     }
 }
 
+private val URL_REGEX = Regex("""https?://[^\s<>"']+""", RegexOption.IGNORE_CASE)
+
+/** Extract the first http(s) URL from shared text (which may include a title). */
+fun extractFirstUrl(text: String?): String? {
+    if (text.isNullOrBlank()) return null
+    return URL_REGEX.find(text)?.value?.trimEnd('.', ',', ')', ']', '"', '\'')
+}
+
+/** Compact, friendly date label: "today", "yesterday", "3d ago", or "MMM d". */
+fun formatShortDate(millis: Long?, now: Long = System.currentTimeMillis()): String? {
+    if (millis == null || millis <= 0) return null
+    val days = (now - millis) / (24L * 60 * 60 * 1000)
+    return when {
+        days < 0 -> null
+        days == 0L -> "today"
+        days == 1L -> "yesterday"
+        days < 7 -> "${days}d ago"
+        else -> runCatching {
+            val dt = java.time.Instant.ofEpochMilli(millis)
+                .atZone(java.time.ZoneId.systemDefault())
+            val pattern = if (now - millis > 330L * 24 * 60 * 60 * 1000) "MMM d, yyyy" else "MMM d"
+            dt.format(java.time.format.DateTimeFormatter.ofPattern(pattern))
+        }.getOrNull()
+    }
+}
+
 private const val WORDS_PER_MINUTE = 220.0
 
 /** Estimate reading time in whole minutes (min 1) from plain text. */
@@ -26,6 +52,17 @@ fun estimateReadingMinutes(text: String?): Int? {
     val words = text.trim().split(Regex("\\s+")).count { it.isNotBlank() }
     if (words == 0) return null
     return maxOf(1, Math.round(words / WORDS_PER_MINUTE).toInt())
+}
+
+/**
+ * Estimated whole minutes left to read, given the total reading time and the
+ * current scroll fraction (0..1). Null when unknown; 0 when effectively done.
+ */
+fun minutesLeft(totalMinutes: Int?, fraction: Float): Int? {
+    if (totalMinutes == null || totalMinutes <= 0) return null
+    val remaining = totalMinutes * (1f - fraction.coerceIn(0f, 1f))
+    if (remaining <= 0.5f) return 0
+    return Math.round(remaining)
 }
 
 /** Strip HTML to plain text for word counting / excerpts. */

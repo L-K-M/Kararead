@@ -78,39 +78,106 @@ data class Highlight(
 data class CurrentUser(val id: String, val name: String?, val email: String?)
 
 /** Connection settings the user supplies during onboarding. */
-data class ConnectionSettings(val serverUrl: String, val apiKey: String) {
+data class ConnectionSettings(
+    val serverUrl: String,
+    val apiKey: String,
+    /** Optional second server tried automatically when the main one is unreachable. */
+    val fallbackUrl: String = "",
+) {
     val isComplete: Boolean get() = serverUrl.isNotBlank() && apiKey.isNotBlank()
+    val hasFallback: Boolean get() = fallbackUrl.isNotBlank()
 }
 
 /** Reader typography & appearance preferences. */
 data class ReaderPreferences(
     val theme: ReaderTheme = ReaderTheme.LIGHT,
-    val font: ReaderFont = ReaderFont.SERIF,
+    val font: ReaderFont = ReaderFont.LITERATA,
     val fontScale: Float = 1.0f,        // 0.7 .. 2.0 multiplier
     val lineHeight: Float = 1.6f,       // unitless
     val horizontalMargin: Int = 20,     // dp, mapped to px in CSS
     val justify: Boolean = false,
     val keepScreenOn: Boolean = false,
+    val volumeKeyPaging: Boolean = true,
 )
 
-enum class ReaderTheme { LIGHT, SEPIA, DARK, BLACK }
+enum class ReaderTheme {
+    /** Follow the system light/dark setting (LIGHT by day, DARK by night). */
+    AUTO,
+    LIGHT, SEPIA, DARK, BLACK,
 
+    /**
+     * Follow the sun: LIGHT through the day, warm SEPIA at dusk, DARK after
+     * nightfall. A gentle, automatic wind-down that leans on the same warm
+     * paper the user already knows from [SEPIA].
+     */
+    SUNSET,
+}
+
+/**
+ * The concrete theme to render. [ReaderTheme.AUTO] follows the system's
+ * light/dark setting; [ReaderTheme.SUNSET] follows the local clock, easing
+ * from bright paper through warm sepia to dark as the day winds down.
+ *
+ * [hourOfDay] is the local hour (0..23); the noon default keeps existing
+ * callers and tests on the daytime branch until they pass the real time.
+ */
+fun ReaderTheme.resolve(systemDark: Boolean, hourOfDay: Int = 12): ReaderTheme = when (this) {
+    ReaderTheme.AUTO -> if (systemDark) ReaderTheme.DARK else ReaderTheme.LIGHT
+    ReaderTheme.SUNSET -> when (hourOfDay) {
+        in 6..16 -> ReaderTheme.LIGHT   // daytime
+        in 17..19 -> ReaderTheme.SEPIA  // golden hour
+        else -> ReaderTheme.DARK        // night
+    }
+    else -> this
+}
+
+/**
+ * Reader typeface options. The first eight are OFL-licensed faces bundled with
+ * the app (see assets/fonts), chosen for on-screen long-form reading; System and
+ * Mono fall back to the platform.
+ */
 enum class ReaderFont(val cssStack: String) {
-    SERIF("Georgia, 'Times New Roman', serif"),
-    SANS("-apple-system, 'Roboto', 'Helvetica Neue', sans-serif"),
-    MONO("'JetBrains Mono', 'Courier New', monospace"),
+    LITERATA("'Literata', Georgia, serif"),
+    LORA("'Lora', Georgia, serif"),
+    SOURCE_SERIF("'Source Serif 4', Georgia, serif"),
+    NEWSREADER("'Newsreader', Georgia, serif"),
+    CRIMSON("'Crimson Pro', Georgia, serif"),
+    BITTER("'Bitter', Georgia, serif"),
+    INTER("'Inter', 'Roboto', sans-serif"),
+    ATKINSON("'Atkinson Hyperlegible', 'Roboto', sans-serif"),
     SYSTEM("system-ui, sans-serif"),
+    MONO("'JetBrains Mono', 'Courier New', monospace"),
 }
 
 enum class AppThemeMode { SYSTEM, LIGHT, DARK }
 
 enum class QueueSort { NEWEST, OLDEST }
 
+/**
+ * Automatic offline-download preferences. Kararead keeps the top [keepCount]
+ * unread articles downloaded so there's always something to read offline, and
+ * removes them as you mark them read.
+ */
+data class OfflinePreferences(
+    val enabled: Boolean = true,
+    val wifiOnly: Boolean = true,
+    val keepCount: Int = 20,
+)
+
 /** Local, client-side reading progress (Karakeep has no server-side field). */
 data class ReadingProgress(
     val bookmarkId: String,
     val fraction: Float,   // 0f .. 1f scroll position
     val updatedAt: Long,
+    val anchor: String? = null,   // block anchor for accurate restore
+)
+
+/** A recently-opened article, for the library's quick "jump back in" strip. */
+data class RecentArticle(
+    val id: String,
+    val title: String,
+    val imageUrl: String?,
+    val fraction: Float,
 )
 
 /** Strip protocol/www for compact display, e.g. "https://www.bbc.com/x" -> "bbc.com". */

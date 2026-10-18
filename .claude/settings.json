@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/setup-android.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "mcp__claude-code-remote__*"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "enableArtifact": false
+}

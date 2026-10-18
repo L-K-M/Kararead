@@ -24,10 +24,17 @@ class BookmarksPagingSource(
                 prevKey = null, // forward-only cursor pagination
                 nextKey = response.nextCursor,
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Paging cancels loads on invalidation/tab switches; swallowing the
+            // cancellation and reporting an Error breaks its pipeline contract.
+            throw e
         } catch (e: Exception) {
             LoadResult.Error(e)
         }
     }
 
+    // Forward-only cursor pagination: there are no stable page keys to resume
+    // from, so a refresh intentionally restarts at the top (null cursor) rather
+    // than trying to anchor around the user's current position.
     override fun getRefreshKey(state: PagingState<String, Bookmark>): String? = null
 }

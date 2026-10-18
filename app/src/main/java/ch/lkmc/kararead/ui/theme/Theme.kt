@@ -8,6 +8,11 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import ch.lkmc.kararead.data.model.AppThemeMode
 
@@ -47,6 +52,7 @@ private val DarkColors = darkColorScheme(
 fun KararreadTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
+    accentColor: Int = DefaultAccent.toArgb(),
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
@@ -58,13 +64,37 @@ fun KararreadTheme(
     val colors = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> DarkColors
-        else -> LightColors
+        dark -> accentedDark(Color(accentColor))
+        else -> accentedLight(Color(accentColor))
     }
+    val typography = remember(context) { kararreadTypography(context.assets) }
 
     MaterialTheme(
         colorScheme = colors,
-        typography = KararreadTypography,
+        typography = typography,
         content = content,
     )
 }
+
+private fun onColorFor(c: Color): Color = if (c.luminance() > 0.5f) Color.Black else Color.White
+
+/** Re-tint the warm light scheme around a chosen accent (when dynamic color is off). */
+private fun accentedLight(seed: Color) = LightColors.copy(
+    primary = seed,
+    onPrimary = onColorFor(seed),
+    primaryContainer = lerp(seed, Color.White, 0.72f),
+    onPrimaryContainer = lerp(seed, Color.Black, 0.55f),
+    secondary = lerp(seed, Color.Black, 0.10f),
+    secondaryContainer = lerp(seed, Color.White, 0.78f),
+    tertiary = seed,
+)
+
+private fun accentedDark(seed: Color) = DarkColors.copy(
+    primary = lerp(seed, Color.White, 0.45f),
+    onPrimary = lerp(seed, Color.Black, 0.60f),
+    primaryContainer = lerp(seed, Color.Black, 0.45f),
+    onPrimaryContainer = lerp(seed, Color.White, 0.72f),
+    secondary = lerp(seed, Color.White, 0.40f),
+    secondaryContainer = lerp(seed, Color.Black, 0.40f),
+    tertiary = lerp(seed, Color.White, 0.40f),
+)

@@ -8,6 +8,7 @@ import androidx.paging.filter
 import ch.lkmc.kararead.data.model.Bookmark
 import ch.lkmc.kararead.data.model.BookmarkSource
 import ch.lkmc.kararead.data.model.QueueSort
+import ch.lkmc.kararead.data.model.RecentArticle
 import ch.lkmc.kararead.data.prefs.SettingsRepository
 import ch.lkmc.kararead.data.repository.KarakeepRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -30,11 +32,13 @@ data class LibraryUiState(
     val tab: LibraryTab = LibraryTab.INBOX,
     val sort: QueueSort = QueueSort.NEWEST,
     val readLaterName: String? = null,
+    val currentStreakDays: Int = 0,
 )
 
 sealed interface LibraryEvent {
     data class Archived(val bookmark: Bookmark) : LibraryEvent
     data class Message(val text: String) : LibraryEvent
+    data class Open(val bookmarkId: String) : LibraryEvent
 }
 
 @HiltViewModel
@@ -52,12 +56,43 @@ class LibraryViewModel @Inject constructor(
     val eventFlow: Flow<LibraryEvent> = events.receiveAsFlow()
 
     val uiState: StateFlow<LibraryUiState> =
-        combine(tab, sort, readLater) { t, s, rl ->
-            LibraryUiState(tab = t, sort = s, readLaterName = rl?.second)
+        combine(tab, sort, readLater, repository.readingStats()) { t, s, rl, stats ->
+            LibraryUiState(
+                tab = t,
+                sort = s,
+                readLaterName = rl?.second,
+                currentStreakDays = stats.currentStreakDays,
+            )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, LibraryUiState())
 
     val progress: StateFlow<Map<String, Float>> =
         repository.allProgress().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    val cachedIds: StateFlow<Set<String>> =
+        repository.cachedIds().stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    val readingTimes: StateFlow<Map<String, Int>> =
+        repository.cachedReadingTimes().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    val recents: StateFlow<List<RecentArticle>> =
+        repository.recentlyOpened().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /**
+     * Downloaded articles for the current tab, shown when the listing can't be
+     * fetched (offline). Filtered to match the tab the same way the live queues
+     * are: unread for Inbox/Read-later, favourited for Favourites, archived for
+     * Archive. Optimistically-hidden ids are dropped too, for consistency.
+     */
+    val offlineBookmarks: StateFlow<List<Bookmark>> =
+        combine(repository.cachedBookmarks(), tab, hiddenIds) { cached, t, hidden ->
+            cached.filter { bm ->
+                bm.id !in hidden && when (t) {
+                    LibraryTab.FAVOURITES -> bm.favourited
+                    LibraryTab.ARCHIVE -> bm.archived
+                    LibraryTab.INBOX, LibraryTab.READ_LATER -> !bm.archived
+                }
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val pagingFlow: Flow<PagingData<Bookmark>> =
         combine(tab, sort, readLater) { t, s, rl -> Triple(t, s, rl) }
@@ -75,8 +110,13 @@ class LibraryViewModel @Inject constructor(
             .cachedIn(viewModelScope)
 
     val bookmarks: Flow<PagingData<Bookmark>> =
-        combine(pagingFlow, hiddenIds) { data, hidden ->
-            data.filter { it.id !in hidden }
+        combine(pagingFlow, hiddenIds, tab) { data, hidden, t ->
+            data.filter { bm ->
+                // The Read-later list is a reading queue, so drop articles already
+                // archived (read) — the Karakeep list endpoint returns them since
+                // list membership is independent of archived state.
+                bm.id !in hidden && !(t == LibraryTab.READ_LATER && bm.archived)
+            }
         }
 
     init {
@@ -84,15 +124,40 @@ class LibraryViewModel @Inject constructor(
             settings.queueSort.collect { sort.value = it }
         }
         viewModelScope.launch {
-            settings.readLaterList.collect { rl ->
+            // distinctUntilChanged matters: the underlying DataStore flow
+            // re-emits on EVERY settings write (sort, typography sliders, ...),
+            // and each emission used to teleport a deliberately-chosen Inbox
+            // tab back to the read-later list.
+            settings.readLaterList.distinctUntilChanged().collect { rl ->
+                val wasUnset = readLater.value == null
                 readLater.value = rl
-                // Default to the read-later list as the home tab if configured.
-                if (rl != null && tab.value == LibraryTab.INBOX) tab.value = LibraryTab.READ_LATER
+                // Default to the read-later list as the home tab only when it
+                // first becomes known (startup, or the user just picked one).
+                if (rl != null && wasUnset && tab.value == LibraryTab.INBOX) {
+                    tab.value = LibraryTab.READ_LATER
+                }
+            }
+        }
+        // Hide articles archived elsewhere (e.g. finished from the reader's
+        // "Done · Next") from the unread reading queues, so a finished article
+        // doesn't linger in the cached list when you come back. Only the Inbox /
+        // Read-later queues are unread-only; Favourites and Archive can legitimately
+        // contain archived items, so leave those untouched.
+        viewModelScope.launch {
+            repository.archivedIds.collect { id ->
+                if (tab.value == LibraryTab.INBOX || tab.value == LibraryTab.READ_LATER) {
+                    hiddenIds.update { it + id }
+                }
             }
         }
     }
 
     fun selectTab(newTab: LibraryTab) {
+        if (newTab == tab.value) return
+        // Optimistic hides are scoped to the queue they happened in; a fresh
+        // queue starts with nothing hidden (otherwise an item archived in the
+        // Inbox would stay invisible in the Archive tab).
+        clearHidden()
         tab.value = newTab
     }
 
@@ -119,7 +184,12 @@ class LibraryViewModel @Inject constructor(
     fun undoArchive(bookmark: Bookmark) {
         viewModelScope.launch {
             runCatching { repository.setArchived(bookmark.id, false) }
-                .onSuccess { hiddenIds.update { it - bookmark.id } }
+                .onSuccess {
+                    hiddenIds.update { it - bookmark.id }
+                    // Archiving evicted the downloaded copy; quietly restore it
+                    // so the article is still readable offline after an undo.
+                    runCatching { repository.getArticle(bookmark.id) }
+                }
         }
     }
 
@@ -135,6 +205,22 @@ class LibraryViewModel @Inject constructor(
                     }
                 }
                 .onFailure { events.send(LibraryEvent.Message("Couldn't update — try again.")) }
+        }
+    }
+
+    /**
+     * For empty states: open a random article to read anyway — a favourite, or
+     * failing that something from the archive.
+     */
+    fun surpriseMe() {
+        viewModelScope.launch {
+            val id = repository.randomBookmarkId(BookmarkSource.Favourites)
+                ?: repository.randomBookmarkId(BookmarkSource.Archive)
+            if (id != null) {
+                events.send(LibraryEvent.Open(id))
+            } else {
+                events.send(LibraryEvent.Message("Nothing to surprise you with yet."))
+            }
         }
     }
 
